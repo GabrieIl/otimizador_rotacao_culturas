@@ -35,9 +35,17 @@ from crop_optimizer.app.charts import (
     plot_planting_window_heatmap,
     plot_survival_scoreboard,
 )
+from crop_optimizer.app.satellite_page import satellite_page
+from crop_optimizer.app.state import clear_roca, get_roca
 from crop_optimizer.config import get_settings
-from crop_optimizer.domain.models import BalancePriority, SimulationConfig, SoilHealthState
+from crop_optimizer.domain.models import (
+    BalancePriority,
+    LocationSpec,
+    SimulationConfig,
+    SoilHealthState,
+)
 from crop_optimizer.domain.presets import DEFAULT_STRATEGIES
+from crop_optimizer.domain.roca import nearest_preset
 from crop_optimizer.elt.pipeline import CropLakehouseEltPipeline
 from crop_optimizer.engine import (
     MonteCarloRotationEngine,
@@ -68,9 +76,8 @@ def _get_lakehouse_catalog() -> LakehouseCatalog:
 
 
 @st.cache_data(show_spinner="Calculando a chuva da safra (NASA POWER + ZARC)...")
-def _rain_delay_report(location_id: str, as_of: date) -> RainDelayReport:
-    locations = {loc.location_id: loc for loc in _get_lakehouse_catalog().load_locations()}
-    return build_rain_delay_report(locations[location_id], as_of)
+def _rain_delay_report(location_json: str, as_of: date) -> RainDelayReport:
+    return build_rain_delay_report(LocationSpec.model_validate_json(location_json), as_of)
 
 
 def _render_rain_section(report: RainDelayReport) -> None:
@@ -170,13 +177,7 @@ def _run_cached_simulation(
     )
 
 
-def main() -> None:
-    st.set_page_config(
-        page_title="Conselheiro do Sertão · Motor Estocástico de Resiliência",
-        page_icon="🌾",
-        layout="wide",
-    )
-
+def plantio_page() -> None:
     st.title("🌾 Motor Estocástico de Resiliência do Sertão")
     st.caption(
         "Conselheiro de Bolso para o Semiárido · NASA CHIRPS/SMAP + ZARC Embrapa em DuckDB/Parquet · "
@@ -186,12 +187,27 @@ def main() -> None:
     catalog = _get_lakehouse_catalog()
     locations = catalog.load_locations()
     loc_options = {f"{loc.name} - {loc.state} ({loc.biome})": loc.location_id for loc in locations}
+    locations_by_id = {loc.location_id: loc for loc in locations}
+    roca = get_roca()
 
     with st.sidebar:
         st.header("Painel do Agricultor / Técnico")
         farmer_name = st.text_input("Nome do Agricultor", value="Seu João")
-        selected_loc_label = st.selectbox("Município (NASA + ZARC)", list(loc_options.keys()))
-        location_id = loc_options[selected_loc_label]
+        if roca is not None:
+            # a chuva e o ZARC usam o ponto da roça; o Monte Carlo só tem clima dos municípios de exemplo
+            nearest, nearest_km = nearest_preset(roca.lat, roca.lon)
+            location_id = nearest.location_id
+            rain_location = roca.to_location()
+            st.info(f"📍 **Sua roça:** {roca.label}")
+            if st.button("Usar os municípios de exemplo"):
+                clear_roca()
+                st.rerun()
+            st.page_link(SATELLITE_PAGE, label="Trocar a roça no mapa", icon="🛰️")
+        else:
+            selected_loc_label = st.selectbox("Município de exemplo", list(loc_options.keys()))
+            location_id = loc_options[selected_loc_label]
+            rain_location = locations_by_id[location_id]
+            st.page_link(SATELLITE_PAGE, label="Marcar a minha roça no mapa", icon="🛰️")
 
         as_of = st.date_input(
             "Data de hoje",
@@ -213,7 +229,7 @@ def main() -> None:
         initial_soil_val = soil_options[soil_label]
 
     try:
-        rain_report = _rain_delay_report(location_id, as_of)
+        rain_report = _rain_delay_report(rain_location.model_dump_json(), as_of)
     except RainDataUnavailable as exc:
         st.error(
             f"**Não foi possível calcular o atraso da chuva.** {exc} "
@@ -224,6 +240,12 @@ def main() -> None:
         _render_rain_section(rain_report)
         safra_delay_days = rain_report.motor_delay_days
     st.divider()
+    if roca is not None:
+        st.warning(
+            f"**Daqui para baixo, a simulação usa o clima de exemplo de {nearest.name}/{nearest.state}**, "
+            f"o município de exemplo mais perto da sua roça (a {nearest_km:.0f} km). "
+            "Só a chuva e a janela do ZARC acima são do ponto da sua roça."
+        )
 
     (
         location,
@@ -388,6 +410,19 @@ def main() -> None:
     with tab_lakehouse:
         st.subheader("🛰️ Local Data Lakehouse (CHIRPS/GPM + SMAP + ZARC em Parquet/DuckDB)")
         st.dataframe(df_climate_annual.to_pandas(), width="stretch", hide_index=True)
+
+
+SATELLITE_PAGE = st.Page(satellite_page, title="Satélite", icon="🛰️", url_path="satelite")
+PLANTIO_PAGE = st.Page(plantio_page, title="Plantio", icon="🌱", url_path="plantio", default=True)
+
+
+def main() -> None:
+    st.set_page_config(
+        page_title="Acauã · Conselheiro do Sertão",
+        page_icon="🌾",
+        layout="wide",
+    )
+    st.navigation([PLANTIO_PAGE, SATELLITE_PAGE], position="top").run()
 
 
 if __name__ == "__main__":

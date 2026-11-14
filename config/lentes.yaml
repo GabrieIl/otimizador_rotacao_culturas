@@ -1,0 +1,101 @@
+# Lentes da página "Satélite": camadas do NASA GIBS (WMTS, sem login).
+# Nomes de camada conferidos no GetCapabilities (EPSG:3857, "best") em 14/11/2026.
+# Textos em linguagem simples; tamanho do pixel é o da grade original do produto.
+
+gibs:
+  capabilities_url: "https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/wmts.cgi?SERVICE=WMTS&REQUEST=GetCapabilities"
+  legenda_url: "https://gibs.earthdata.nasa.gov/legends/{colormap}_H.svg"
+  timeout_segundos: 120
+
+o_que_nao_ve: >-
+  Adubo, praga, preço e a mão de obra da família. Isso quem sabe é a
+  senhora, o senhor e o técnico.
+
+lentes:
+  - id: chuva
+    nome: "Chuva"
+    fonte: "GPM IMERG"
+    cor: "#2D8CFF"
+    camada: "IMERG_Precipitation_Rate"
+    colormap: "GPM_Precipitation_Rate"
+    descricao: >-
+      Quanto choveu em cada dia desde 2000, estimado por uma constelação de
+      satélites (missão GPM, NASA/JAXA). O atraso da chuva na página Plantio usa
+      outra fonte (NASA POWER), com quadrados maiores.
+    periodo: "um dia"
+    pixel_km: 10
+    pixel_texto: >-
+      Sua roça cabe dentro de um quadrado só. A lente mostra a chuva da região,
+      não do seu hectare. Quadrado vazio = não choveu naquele dia.
+    zoom: 8
+
+  - id: agua_no_solo
+    nome: "Água no solo"
+    fonte: "SMAP"
+    cor: "#2EC4B6"
+    camada: "SMAP_L4_Analyzed_Root_Zone_Soil_Moisture"
+    colormap: "SMAP_Analyzed_Soil_Moisture"
+    descricao: >-
+      Umidade da terra na altura das raízes (até 1 m), desde 2015. O satélite
+      SMAP mede a superfície e um modelo da NASA estima a camada das raízes.
+    periodo: "um dia"
+    pixel_km: 9
+    pixel_texto: >-
+      Cada quadrado tem uns 9 km. Mostra se a região está com terra seca ou
+      úmida, não a umidade de um canteiro.
+    zoom: 8
+
+  - id: verde
+    nome: "Verde da lavoura"
+    fonte: "MODIS (Terra)"
+    cor: "#2FBF4A"
+    camada: "MODIS_Terra_L3_NDVI_16Day"
+    colormap: "MODIS_L3_NDVI"
+    descricao: >-
+      Quanto a vegetação está verde e viva (índice NDVI), juntando 16 dias de
+      imagens para tirar as nuvens. Desde 2000.
+    periodo: "16 dias"
+    pixel_km: 0.25
+    pixel_texto: >-
+      Cada quadrado tem 250 m. Já dá para ver manchas de lavoura, caatinga e
+      área irrigada, mas não uma fileira de plantas.
+    zoom: 12
+
+  - id: calor
+    nome: "Calor da terra"
+    fonte: "MODIS (Terra)"
+    cor: "#E8622C"
+    camada: "MODIS_Terra_L3_Land_Surface_Temp_8Day_Day"
+    colormap: "MODIS_Land_Surface_Temp"
+    descricao: >-
+      Temperatura do chão de dia (não do ar), média de 8 dias. Terra muito
+      quente seca a planta mais rápido. Desde 2000.
+    periodo: "8 dias"
+    pixel_km: 1
+    pixel_texto: >-
+      Cada quadrado tem 1 km. Mostra a região quente ou fresca, não a sombra
+      de uma árvore.
+    zoom: 10
+
+  - id: relevo
+    nome: "Relevo"
+    fonte: "SRTM"
+    cor: "#A08B5B"
+    camada: "SRTM_Color_Index"
+    colormap: "SRTM_Color_Index"
+    descricao: >-
+      Altura do terreno, medida por radar do ônibus espacial Endeavour em 2000.
+      Ajuda a ver baixios, onde a água junta, e serras.
+    periodo: "fixo (2000)"
+    pixel_km: 0.03
+    pixel_texto: >-
+      Cada quadrado tem uns 30 m. É o dado mais fino das lentes, mas o relevo
+      não muda de um ano para o outro.
+    zoom: 12
+
+# Recursos sugeridos para o desafio que ainda NÃO viraram lente (ver docs/referencias.md):
+# - ECOSTRESS (evapotranspiração/estresse, ~70 m): não está no GIBS; exige Earthdata Login.
+# - HLS L30/S30 (Landsat + Sentinel-2, 30 m): está no GIBS, mas cada dia só tem a faixa
+#   de uma passagem; precisaria escolher a data com imagem sem nuvem.
+# - GRACE/GRACE-FO (água subterrânea, ~300 km): no GIBS só até 07/2022.
+# - SMAP L3 Enhanced (superfície, 9 km): no GIBS, mas com falhas entre órbitas; usamos o L4.
