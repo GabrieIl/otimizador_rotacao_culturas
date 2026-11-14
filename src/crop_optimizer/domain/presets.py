@@ -7,6 +7,7 @@ from crop_optimizer.domain.models import CropSpec, LocationSpec, RotationStrateg
 DEFAULT_LOCATIONS: list[LocationSpec] = [
     LocationSpec(
         location_id="petrolina_pe",
+        ibge_code="2611101",
         name="Petrolina",
         state="PE",
         biome="Caatinga · Sertão do São Francisco",
@@ -20,6 +21,7 @@ DEFAULT_LOCATIONS: list[LocationSpec] = [
     ),
     LocationSpec(
         location_id="quixada_ce",
+        ibge_code="2311306",
         name="Quixadá",
         state="CE",
         biome="Caatinga · Sertão Central",
@@ -33,6 +35,7 @@ DEFAULT_LOCATIONS: list[LocationSpec] = [
     ),
     LocationSpec(
         location_id="sousa_pb",
+        ibge_code="2516201",
         name="Sousa",
         state="PB",
         biome="Caatinga · Alto Sertão Paraibano",
@@ -46,6 +49,7 @@ DEFAULT_LOCATIONS: list[LocationSpec] = [
     ),
     LocationSpec(
         location_id="irece_ba",
+        ibge_code="2914604",
         name="Irecê",
         state="BA",
         biome="Caatinga · Semiárido Baiano",

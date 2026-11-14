@@ -73,6 +73,7 @@ class LocationSpec(BaseModel):
     location_id: str
     name: str
     state: str
+    ibge_code: str | None = None
     biome: str
     latitude: float
     longitude: float

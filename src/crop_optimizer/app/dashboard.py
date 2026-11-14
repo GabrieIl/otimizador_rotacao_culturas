@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import date
+
 import streamlit as st
 
 from crop_optimizer.accessibility import (
@@ -20,6 +22,12 @@ from crop_optimizer.analytics import (
     build_survival_scoreboard_frame,
     classify_traffic_light,
 )
+from crop_optimizer.analytics.rain_delay import (
+    RainDelayReport,
+    build_rain_delay_report,
+    describe_status,
+    fmt_date,
+)
 from crop_optimizer.app.charts import (
     plot_balance_scale_bars,
     plot_nutrient_dynamics,
@@ -37,7 +45,17 @@ from crop_optimizer.engine import (
     rank_by_survival,
     select_by_balance_priority,
 )
+from crop_optimizer.engine.rain_onset import OnsetCriteria
+from crop_optimizer.ingestion.rain_history import RainDataUnavailable
 from crop_optimizer.lakehouse.catalog import LakehouseCatalog
+
+DELAY_GRID = [0, 7, 14, 21, 28, 35]
+_CROP_LABELS = {
+    "milho_sertanejo": "Milho",
+    "feijao_caupi": "Feijão-caupi",
+    "sorgo_forrageiro": "Sorgo forrageiro",
+}
+_WINDOW_ICONS = {"sem_indicacao": "⛔", "ainda_nao_abriu": "⏳", "aberta": "✅", "fechou": "🚫"}
 
 
 @st.cache_resource
@@ -47,6 +65,54 @@ def _get_lakehouse_catalog() -> LakehouseCatalog:
     if not catalog.is_ready():
         CropLakehouseEltPipeline(settings).run()
     return catalog
+
+
+@st.cache_data(show_spinner="Calculando a chuva da safra (NASA POWER + ZARC)...")
+def _rain_delay_report(location_id: str, as_of: date) -> RainDelayReport:
+    locations = {loc.location_id: loc for loc in _get_lakehouse_catalog().load_locations()}
+    return build_rain_delay_report(locations[location_id], as_of)
+
+
+def _render_rain_section(report: RainDelayReport) -> None:
+    s = report.status
+    loc = report.location
+    st.subheader(f"🌧️ Chuva da safra {s.season_label} em {loc.name}/{loc.state}")
+    title, body, level = describe_status(s)
+    getattr(st, level)(f"**{title}.** {body}")
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("A chuva firmou em", fmt_date(s.onset_date) if s.onset_date else "Ainda não")
+    c2.metric("Em ano normal", fmt_date(s.reference_date))
+    if s.state in ("antes_da_epoca", "sem_referencia"):
+        c3.metric("Atraso", "—")
+    elif s.delay_days < 0:
+        c3.metric("Atraso", f"{s.delay_days} dias", delta="adiantada")
+    else:
+        c3.metric("Atraso", f"{s.delay_days} dias")
+    c4.metric("Atraso usado na simulação", f"{report.motor_delay_days} dias")
+
+    crit = OnsetCriteria.from_config()
+    ref = s.reference
+    st.caption(
+        f"Chuva diária: {report.source}, com dados até {s.data_until:%d/%m/%Y} "
+        "(a fonte tem uns 3 dias de atraso e cada ponto cobre uns 50 km). "
+        f"A chuva \"firma\" quando caem {crit.rain_3d_mm:.0f} mm em 3 dias e não vem veranico de mais de "
+        f"{crit.max_dry_spell_days} dias nos {crit.check_window_days} dias seguintes (Sivakumar, 1988). "
+        f"Normal = mediana de {ref.first_year} a {ref.last_year}; em {ref.years_without_onset} desses "
+        f"{ref.n_years} anos a chuva não firmou."
+    )
+
+    if report.zarc_error:
+        st.warning(f"Janelas oficiais do ZARC indisponíveis: {report.zarc_error}")
+    elif report.crop_windows:
+        lines = [
+            f"- {_WINDOW_ICONS[cw.state]} **{_CROP_LABELS.get(cw.crop_id, cw.crop_id)}**: {cw.phrase}"
+            for cw in report.crop_windows
+        ]
+        st.markdown(
+            f"**Janela oficial de plantio em sequeiro (ZARC {report.zarc_safra}, MAPA/Embrapa)**, "
+            f"em {fmt_date(s.data_until)}:\n" + "\n".join(lines)
+        )
 
 
 @st.cache_data(show_spinner=False)
@@ -80,6 +146,7 @@ def _run_cached_simulation(
 
     df_matrix = build_planting_window_risk_matrix(
         climate_stats,
+        delay_days_grid=sorted({*DELAY_GRID, safra_delay_days}),
         veranico_days=veranico_days,
         n_samples=n_scenarios,
     )
@@ -126,7 +193,13 @@ def main() -> None:
         selected_loc_label = st.selectbox("Município (NASA + ZARC)", list(loc_options.keys()))
         location_id = loc_options[selected_loc_label]
 
-        safra_delay_days = st.slider("Atraso das Chuvas (dias)", min_value=0, max_value=35, value=14, step=7)
+        as_of = st.date_input(
+            "Data de hoje",
+            value=date.today(),
+            max_value=date.today(),
+            format="DD/MM/YYYY",
+            help="O atraso da chuva é calculado para esta data. Troque para simular outra época do ano.",
+        )
         veranico_days = st.slider("Veranico na Quadra Chuvosa (dias secos)", min_value=0, max_value=21, value=7, step=7)
         horizon_years = st.slider("Horizonte (anos)", min_value=3, max_value=5, value=5)
         n_scenarios = st.select_slider(
@@ -138,6 +211,19 @@ def main() -> None:
         soil_options = {s.label: s.value for s in SoilHealthState}
         soil_label = st.selectbox("Condição Atual do Solo", list(soil_options.keys()), index=2)
         initial_soil_val = soil_options[soil_label]
+
+    try:
+        rain_report = _rain_delay_report(location_id, as_of)
+    except RainDataUnavailable as exc:
+        st.error(
+            f"**Não foi possível calcular o atraso da chuva.** {exc} "
+            "A simulação abaixo roda SEM atraso de chuva."
+        )
+        safra_delay_days = 0
+    else:
+        _render_rain_section(rain_report)
+        safra_delay_days = rain_report.motor_delay_days
+    st.divider()
 
     (
         location,
