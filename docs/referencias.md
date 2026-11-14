@@ -211,12 +211,54 @@ Camadas usadas (identificador e título conforme o catálogo do GIBS). O produto
 | GRACE/GRACE-FO Mascon | NASA PO.DAAC / JPL | <https://podaac.jpl.nasa.gov/dataset/TELLUS_GRAC-GRFO_MASCON_CRI_GRID_RL06.3_V4> | Água subterrânea da região (~300 km), mensal. | No GIBS só até 07/2022. |
 | API Agritec (ZARC) | Embrapa AgroAPI | <https://www.agroapi.cnptia.embrapa.br/portal/assets/docs/agritec.pdf> | ZARC por API, com cultivares indicadas. | Precisa de cadastro; grátis até um limite. |
 
-**Recursos sugeridos para o desafio.** A aba de recursos da página oficial
-(<https://www.spaceappschallenge.org/2026/challenges/adapting-farms-with-nasa-data/?tab=resources>) não
-abriu daqui por um erro de certificado SSL do site. A lista acima veio de um catálogo **não oficial**,
-<https://spacedata.swapniltamse.com/challenges/field-shift-adapting-farms/>, que indica 6 dados: SMAP L3
-Enhanced, ECOSTRESS, GPM IMERG Final, HLS L30, NASA POWER e GRACE/GRACE-FO. **Falta alguém conferir na
-página oficial.**
+GRACE/GRACE-FO e o SMAP L3 Enhanced vieram de um catálogo não oficial
+(<https://spacedata.swapniltamse.com/challenges/field-shift-adapting-farms/>) e **não constam na lista
+oficial abaixo**. Ficam só como candidatos.
+
+### 4.1 Recursos oficiais do desafio × o que usamos
+
+Fonte: aba "Resources" do desafio *Field Shift: Adapting Farms with NASA Data*,
+<https://www.spaceappschallenge.org/2026/challenges/adapting-farms-with-nasa-data/?tab=resources>
+(conteúdo colado pela equipe em 14/11/2026; o site não abriu daqui por um erro de certificado SSL).
+
+A NASA avisa na página que não endossa entidades fora do governo dos EUA e que, em sites de terceiros,
+valem os termos de uso de cada site.
+
+**NASA Data & Resources**
+
+| Recurso oficial | Cobertura | No projeto | Observação |
+|---|---|---|---|
+| SMAP (umidade do solo) | Global | ✅ Lente **Água no solo** (SMAP L4, zona das raízes, via GIBS) | O texto oficial fala da umidade de superfície medida a cada 2-3 dias (L3). Usamos o L4 para o mapa não ficar com faixas vazias entre as órbitas. |
+| GPM & IMERG (chuva) | Global | ✅ Lente **Chuva** (IMERG diário via GIBS) | Candidato a conferir o NASA POWER no cálculo do atraso. |
+| Landsat e MODIS/VIIRS (refletância, NDVI) | Global | ✅ Lentes **Verde da lavoura** (MODIS NDVI 250 m) e **Calor da terra** (MODIS LST 1 km) | Landsat de 30 m (HLS) ainda pendente. |
+| NASA POWER | Global | ✅ **Atraso da chuva** e chuva do mês no ponto | Temperatura e radiação para ET0 (Hargreaves, CLAUDE.md §5.1) ainda não usadas. |
+| SRTM (relevo) | Global | ✅ Lente **Relevo** | Declividade e risco de erosão: candidato. |
+| ECOSTRESS (LST e ET) | Global | ⏳ Candidato | Não está no GIBS; exige Earthdata Login. O mock usa em "Calor da terra". |
+| NLDAS / GLDAS | NLDAS: EUA · GLDAS: global | ⏳ GLDAS candidato | Umidade e evapotranspiração contínuas para validar o balanço hídrico. |
+| FAO GAEZ | Global | ⏳ Candidato forte | Aptidão por cultura (milho, sorgo, caupi) para embasar as 3 rotações. |
+| GEDI (biomassa e dossel) | Global, faixa tropical incluída | ➖ Pouco útil | Feito para vegetação alta; caatinga e roçado são baixos. |
+| USDA Ag Data Commons | EUA | ❌ Não se aplica | Equivalente sugerido: dados abertos MAPA/Embrapa (já usamos o ZARC). |
+| Web Soil Survey (NRCS) | EUA | ❌ Não se aplica | Equivalente sugerido: PronaSolos / Embrapa Solos; SoilGrids (global, já previsto no CLAUDE.md). |
+| Cropland Data Layer (CropScape) | EUA | ❌ Não se aplica | Equivalente sugerido: MapBiomas (uso e cobertura, 30 m, anual). |
+| PRISM | EUA | ❌ Não se aplica | Equivalente sugerido: Normais Climatológicas do INMET. |
+| SSURGO / STATSGO2 | EUA | ❌ Não se aplica | Equivalente sugerido: PronaSolos; SoilGrids. |
+| NAIP (foto aérea de 1 m) | EUA | ❌ Não se aplica | A imagem de base Esri cumpre o papel visual. |
+| NLCD (cobertura do solo) | EUA | ❌ Não se aplica | Equivalente sugerido: MapBiomas. |
+| CoCoRaHS (pluviômetros voluntários) | América do Norte | ❌ Não se aplica | Equivalente sugerido: postos do INMET, da ANA e de órgãos estaduais (FUNCEME, APAC, AESA, INEMA). |
+| USGS NWIS (água) | EUA | ❌ Não se aplica | Equivalente sugerido: ANA Hidroweb. |
+| USDA AMS Market News (preços) | EUA | ❌ Não se aplica | Equivalente sugerido: CONAB (hoje os preços do app são fixos, ver seção 5). |
+| USDA NASS QuickStats (produção) | EUA | ❌ Não se aplica | Equivalente sugerido: IBGE PAM via SIDRA, tabela 5457 (já prevista no CLAUDE.md para validação). |
+| OpenET | Oeste dos EUA | ❌ Não se aplica | — |
+| USFS LANDFIRE | EUA | ❌ Não se aplica | Equivalente sugerido: MapBiomas. |
+
+**Space Agency Partner Resources**
+
+| Recurso oficial | Cobertura | No projeto | Observação |
+|---|---|---|---|
+| Copernicus Sentinel-2 (ESA) | Global | ⏳ Candidato | NDVI de 10 m, o que o mock pedia em "Verde da lavoura". Acesso via Copernicus Data Space (conta gratuita). |
+| ERA5 (ECMWF) | Global | ⏳ Candidato | Reanálise para conferir a chuva e a temperatura do NASA POWER. |
+
+Os equivalentes brasileiros são **sugestões da equipe**. Ainda não foram baixados nem conferidos.
 
 ---
 

@@ -167,6 +167,9 @@ quando o plantio *pode* começar com risco aceitável, não o dia típico em que
 - **Por que dá para confiar:** as imagens são as oficiais da NASA (GIBS/EOSDIS), as mesmas do NASA
   Worldview. Os nomes das camadas e as datas disponíveis são lidos do catálogo do GIBS todo dia, não
   escritos à mão.
+- **Alinhado com o desafio:** as 5 lentes e o NASA POWER estão na lista oficial "NASA Data & Resources" do
+  desafio (SMAP, GPM IMERG, MODIS, SRTM, POWER). O cruzamento completo, inclusive com os recursos que só
+  cobrem os EUA, está em [referencias.md](referencias.md), seção 4.1.
 - **Diferenças em relação ao mock:** o GIBS não tem NDVI de Sentinel-2/Landsat nem ECOSTRESS. Usamos o MODIS
   e o rótulo diz isso. Os detalhes estão em [features/02-mapa-e-lentes.md](features/02-mapa-e-lentes.md).
 

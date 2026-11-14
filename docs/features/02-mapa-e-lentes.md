@@ -26,7 +26,7 @@ aguardando validação da equipe.
 | Pergunta | Decisão |
 |---|---|
 | O que o ponto da roça controla? | **Chuva + ZARC** usam o ponto. O Monte Carlo continua com o clima de exemplo do município pré-cadastrado mais próximo, com aviso na tela. |
-| Lentes do mock que o GIBS não tem (NDVI de Sentinel-2/Landsat, ECOSTRESS) | Usar **o que o GIBS tem**: NDVI e temperatura da superfície do **MODIS**, com o rótulo da fonte correta. Cruzado com os recursos sugeridos para o desafio (ver referências). |
+| Lentes do mock que o GIBS não tem (NDVI de Sentinel-2/Landsat, ECOSTRESS) | Usar **o que o GIBS tem**: NDVI e temperatura da superfície do **MODIS**, com o rótulo da fonte correta. Todas as 5 lentes usam dados da lista oficial de recursos do desafio (ver referências, seção 4.1). |
 | Navegação | **Plantio** (o dashboard que já existia, sem mudar o conteúdo) + **Satélite** (nova). |
 | Visual escuro do mock | **Fica para o passo 9** (estilo visual final). A página usa o visual padrão do Streamlit. |
 
@@ -155,8 +155,8 @@ ano e mês, depois volte em **Plantio**.
 
 - **Chuva de um dia (IMERG):** a lente mostra a chuva do dia 15 do mês, que muitas vezes é zero. O GIBS não
   tem acumulado mensal do IMERG. O total do mês vem do NASA POWER, no painel.
-- **Água no solo usa o SMAP L4 (modelo + satélite),** não o L3 Enhanced sugerido nos recursos do
-  desafio: o L3 tem falhas entre as órbitas e deixaria buracos no mapa.
+- **Água no solo usa o SMAP L4 (modelo + satélite),** não o L3, que é a superfície medida a cada 2-3 dias
+  descrita nos recursos do desafio. O L3 tem falhas entre as órbitas e deixaria buracos no mapa.
 - **Verde e calor são do MODIS** (250 m e 1 km), não do Sentinel-2/Landsat nem do ECOSTRESS do mock.
 - **Relevo do SRTM é de 2000.**
 - **Monte Carlo:** continua com o clima sintético do município de exemplo mais perto, mesmo com a roça
@@ -169,8 +169,8 @@ ano e mês, depois volte em **Plantio**.
 ## Pendências
 
 - [ ] Lente HLS (Landsat + Sentinel-2, 30 m): escolher automaticamente a data com imagem sem nuvem.
-- [ ] ECOSTRESS e SMAP L3 via Earthdata Login (conta gratuita), se a equipe quiser seguir os recursos
-  sugeridos à risca.
+- [ ] ECOSTRESS via Earthdata Login (conta gratuita): está na lista oficial e no mock.
+- [ ] NDVI de 10 m do Sentinel-2 (recurso parceiro da ESA, Copernicus Data Space): o mock pedia.
 - [ ] Valor numérico no ponto para as outras lentes (hoje só a chuva tem número).
 - [ ] Estilo visual do mock (paleta e fontes do Acauã).
 - [ ] Separar Plantio em Plantio / Rotações / Painel completo, como no mock.

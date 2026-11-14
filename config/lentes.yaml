@@ -93,7 +93,7 @@ lentes:
       não muda de um ano para o outro.
     zoom: 12
 
-# Recursos sugeridos para o desafio que ainda NÃO viraram lente (ver docs/referencias.md):
+# Recursos (oficiais ou candidatos) que ainda NÃO viraram lente (ver docs/referencias.md, seção 4.1):
 # - ECOSTRESS (evapotranspiração/estresse, ~70 m): não está no GIBS; exige Earthdata Login.
 # - HLS L30/S30 (Landsat + Sentinel-2, 30 m): está no GIBS, mas cada dia só tem a faixa
 #   de uma passagem; precisaria escolher a data com imagem sem nuvem.
