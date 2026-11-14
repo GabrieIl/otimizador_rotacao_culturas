@@ -24,24 +24,24 @@ Leia esta tabela antes de apresentar qualquer número.
 
 | Informação | Fonte | Situação |
 |---|---|---|
-| Chuva diária usada no **atraso da chuva** | NASA POWER (`PRECTOTCORR`) | ✅ **Real**, baixada e em cache |
-| Data normal de início da chuva | calculada da chuva real de 1991-2020 | ✅ **Real** (critério de Sivakumar, 1988) |
-| Janelas oficiais de plantio | Tábua de risco do ZARC (MAPA/Embrapa), safra 2026/2027 | ✅ **Real**, CSV oficial |
-| Município da roça (a partir da coordenada) | OpenStreetMap (Nominatim) + lista de municípios do IBGE | ✅ **Real**, consultado e em cache |
-| Imagens das lentes (chuva, água no solo, verde, calor, relevo) | NASA GIBS (IMERG, SMAP L4, MODIS, SRTM) | ✅ **Real**, tiles oficiais |
-| Imagem de base do mapa | Esri World Imagery | ✅ Real (terceiro, com atribuição) |
-| Solo do local (argila, areia, M.O., pH, CTC) | ISRIC SoilGrids 2.0 (mapa de 250 m) ou análise de campo | ✅ **Real** (mapa estimado, com faixa de incerteza) |
-| Altitude e declividade | SRTM via Terrain Tiles (AWS) | ✅ **Real** |
-| Fósforo, potássio e V% sem análise | valor típico do semiárido | ⚠️ **Assumido** e neutro (não pesa a favor nem contra) |
-| Exigência de cada cultura e graus de limitação | `config/aptidao.yaml` | ⚠️ Classes de análise com fonte; exigências **a revisar por agrônomo** |
-| Clima usado no **Monte Carlo e no semáforo** | `NasaPowerClient` em modo `offline` | ⚠️ **Sintético** (perfis fixos por município) |
-| Umidade do solo / NDVI | `NasaAppeearsClient` em modo `offline` | ⚠️ **Sintético** (sem token do AppEEARS) |
-| Preços e custos | `B3MarketDataSource` | ⚠️ **Valores fixos** em `domain/presets.py`, sem consulta |
-| Parâmetros das culturas | `domain/presets.py` | ⚠️ Hipóteses da equipe, sem revisão de agronomia |
-| Penalidade do atraso e do veranico na produtividade | `engine/monte_carlo.py` | ⚠️ Coeficientes sem fonte |
-| Janelas do "ZARC" dentro do ELT (`EmbrapaZarcSource`) | gerado a partir de datas fixas | ❌ **Falso**: não usar; substituir pela tábua real |
+| Chuva diária usada no **atraso da chuva** | NASA POWER (`PRECTOTCORR`) | **Real**, baixada e em cache |
+| Data normal de início da chuva | calculada da chuva real de 1991-2020 | **Real** (critério de Sivakumar, 1988) |
+| Janelas oficiais de plantio | Tábua de risco do ZARC (MAPA/Embrapa), safra 2026/2027 | **Real**, CSV oficial |
+| Município da roça (a partir da coordenada) | OpenStreetMap (Nominatim) + lista de municípios do IBGE | **Real**, consultado e em cache |
+| Imagens das lentes (chuva, água no solo, verde, calor, relevo) | NASA GIBS (IMERG, SMAP L4, MODIS, SRTM) | **Real**, tiles oficiais |
+| Imagem de base do mapa | Esri World Imagery | Real (terceiro, com atribuição) |
+| Solo do local (argila, areia, M.O., pH, CTC) | ISRIC SoilGrids 2.0 (mapa de 250 m) ou análise de campo | **Real** (mapa estimado, com faixa de incerteza) |
+| Altitude e declividade | SRTM via Terrain Tiles (AWS) | **Real** |
+| Fósforo, potássio e V% sem análise | valor típico do semiárido | **Assumido** e neutro (não pesa a favor nem contra) |
+| Exigência de cada cultura e graus de limitação | `config/aptidao.yaml` | Classes de análise com fonte; exigências **a revisar por agrônomo** |
+| Clima usado no **Monte Carlo e no semáforo** | `NasaPowerClient` em modo `offline` | **Sintético** (perfis fixos por município) |
+| Umidade do solo / NDVI | `NasaAppeearsClient` em modo `offline` | **Sintético** (sem token do AppEEARS) |
+| Preços e custos | `B3MarketDataSource` | **Valores fixos** em `domain/presets.py`, sem consulta |
+| Parâmetros das culturas | `domain/presets.py` | Hipóteses da equipe, sem revisão de agronomia |
+| Penalidade do atraso e do veranico na produtividade | `engine/monte_carlo.py` | Coeficientes sem fonte |
+| Janelas do "ZARC" dentro do ELT (`EmbrapaZarcSource`) | gerado a partir de datas fixas | **Falso**: não usar; substituir pela tábua real |
 
-Hoje a seção **"🌧️ Chuva da safra"** (página Plantio) e a página **Satélite** são todas baseadas em dado
+Hoje a seção **"Chuva da safra"** (página Plantio) e a página **Satélite** são todas baseadas em dado
 real. O semáforo e o placar recebem o atraso real, mas o resto do clima deles ainda é sintético e vem do
 **município de exemplo** mais próximo, mesmo quando a roça foi marcada no mapa.
 
@@ -135,8 +135,8 @@ começar.
   base do Proagro e do seguro rural. Para cada município, cultura, tipo de solo e ciclo, diz em quais
   **decêndios** (blocos de 10 dias, 36 por ano) o plantio tem risco de perda de até 20%, 30% ou 40%.
 - O que não aparece na tábua **não é indicado** (risco acima de 40% ou não zoneado).
-- No app mostramos, por cultura, a união dos solos e ciclos: ✅ aberta (faltam N dias), ⏳ ainda não abriu,
-  🚫 fechou, ⛔ sem indicação.
+- No app mostramos, por cultura, a união dos solos e ciclos: aberta (faltam N dias), ainda não abriu,
+  fechou, sem indicação.
 - **Por que isso fecha a conta:** o ZARC diz *até quando* é seguro plantar, e o satélite diz *se a chuva já
   chegou* neste ano. Juntos respondem "posso plantar agora?".
 
@@ -208,8 +208,8 @@ e pouco no sorgo. Por isso o app não tem mais **uma** condição do solo: cada 
 2. **Classe oficial** de cada atributo (Alvarez V. et al., 1999). O fósforo depende da argila: 8 mg/dm³ é
    "muito baixo" em solo arenoso e "médio" em solo argiloso.
 3. **Grau de limitação** = classe do solo x exigência da cultura (`config/aptidao.yaml`).
-4. **Nota** por grau (Sys) e **índice** 0-100 pelo método da raiz quadrada: 🟢 Bom > 75, 🟡 Atenção 50-75,
-   🟠 Restrito 25-50, 🔴 Crítico < 25.
+4. **Nota** por grau (Sys) e **índice** 0-100 pelo método da raiz quadrada: Bom > 75, Atenção 50-75,
+   Restrito 25-50, Crítico < 25.
 5. **Na simulação:** o índice é comparado com o do solo típico do semiárido. Igual ao típico = fator 1,0;
    melhor ou pior muda a colheita simulada daquela cultura.
 
@@ -233,11 +233,11 @@ seções 1.4 a 1.8). Detalhes em [features/03-perfil-do-local.md](features/03-pe
 - **Barra de navegação no topo:** **Início** (perfil do local e solo por cultura), **Plantio** (chuva, ZARC,
   semáforo, placar, rádio, ficha) e **Satélite** (mapa e lentes).
 - **Plantio não tem barra lateral.** O local vem da roça marcada no mapa (ou do município de exemplo escolhido
-  na Início/Satélite). "📅 Simular outra data", no topo e fechado, troca o dia usado no cálculo da chuva
+  na Início/Satélite). "Simular outra data", no topo e fechado, troca o dia usado no cálculo da chuva
   (útil para a demonstração fora da época). Ex.: Irecê em 20/12/2025 mostra chuva atrasada.
-- **Horizonte da simulação** (1, 2, 3 ou 5 anos) é um filtro em "🔁 Rotações" e vale só para os painéis
+- **Horizonte da simulação** (1, 2, 3 ou 5 anos) é um filtro em "Rotações" e vale só para os painéis
   da simulação. Com 1 ano, o risco mostrado é "perder a safra no ano", não "2 anos seguidos".
-- **"🌧️ Chuva da safra":** frase principal, quatro números (quando firmou, normal, atraso, atraso usado na
+- **"Chuva da safra":** frase principal, quatro números (quando firmou, normal, atraso, atraso usado na
   simulação), fonte e critério na legenda, e janelas do ZARC.
 - **Semáforo e placar (abaixo):** usam o atraso calculado, mas o clima de fundo ainda é sintético (seção 2).
 

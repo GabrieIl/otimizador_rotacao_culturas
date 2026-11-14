@@ -33,9 +33,9 @@ dias" fora da época.
 ## O que mudou
 
 ### 1. Sem barra lateral
-- **Local:** linha no topo, "📍 Sua roça: ..." ou "📍 Local: Petrolina/PE (município de exemplo)", com o
+- **Local:** linha no topo, "Sua roça: ..." ou "Local: Petrolina/PE (município de exemplo)", com o
   link "Marcar ou trocar a roça no mapa". O município de exemplo é escolhido na Início ou na Satélite.
-- **Data:** "📅 Simular outra data", fechado por padrão. Quando a data não é hoje, a página mostra
+- **Data:** "Simular outra data", fechado por padrão. Quando a data não é hoje, a página mostra
   "Simulando o dia ...". O CLAUDE.md pede esse controle para a demonstração fora da época de chuva.
 - **Nome:** removido. Rádio: "Alô, agricultora e agricultor!"; WhatsApp: "Olá!"; o PDF não imprime o
   campo. `SimulationConfig.farmer_name` agora é vazio por padrão. A API ainda aceita nome, se enviado.
@@ -43,7 +43,7 @@ dias" fora da época.
 - **Solo:** resumo por cultura logo abaixo da chuva, com link para a Início.
 
 ### 2. Horizonte como filtro dos painéis
-- Seção **"🔁 Rotações"** com o filtro **Horizonte da simulação: 1 ano | 2 anos | 3 anos | 5 anos**
+- Seção **"Rotações"** com o filtro **Horizonte da simulação: 1 ano | 2 anos | 3 anos | 5 anos**
   (padrão 5). Ele vale para os painéis abaixo: métricas, Balança, placar, rádio, ficha e gráficos.
 - O **semáforo** e a matriz atraso x cultura não dependem do horizonte e ficam acima do filtro.
 - **Com 1 ano**, os textos dizem "risco de perder a safra no ano" no lugar de "2 anos seguidos" (métricas,
@@ -83,6 +83,17 @@ sintético, perdia 1. O veranico real é mais frequente e mais longo do que o mo
 - Não diz mais "a chuva atrasou 0 dias". Sem atraso, o motivo vira "pelo histórico de chuva de ...".
 - "para os próximos N anos" segue o horizonte escolhido.
 
+### 5. Sem emojis no site
+A pedido da equipe, nenhum texto do site tem emoji: títulos, abas, menus, ícones das páginas, métricas,
+rótulos de gráfico, mensagem do WhatsApp e tabela de solo por cultura. O que o emoji comunicava virou
+palavra:
+- **Semáforo:** "SEMÁFORO VERDE — Plante Milho". A palavra continua junto da cor, como o CLAUDE.md exige.
+  `TrafficLightLevel.emoji` foi trocado por `TrafficLightLevel.label` ("Verde", "Amarelo", "Vermelho"), e a
+  API devolve `label` no lugar de `emoji`.
+- **Solo por cultura:** "Milho: atenção · Sorgo: bom".
+- **Origem dos dados do solo:** "análise de campo", "mapa/satélite", "típico do semiárido (assumido)".
+- Junto, corrigi um bug antigo do WhatsApp: a mensagem trocava todas as vírgulas por pontos ("Olá. *Maria*!").
+
 ### Arquivos
 
 | Arquivo | Mudança |
@@ -105,7 +116,7 @@ sintético, perdia 1. O veranico real é mais frequente e mais longo do que o mo
 pytest tests/test_veranico_plantio.py
 streamlit run src/crop_optimizer/app/dashboard.py --server.port 8501
 ```
-Na **Plantio**: troque o horizonte em "🔁 Rotações" (veja o rótulo mudar em 1 ano). Abra "📅 Simular
+Na **Plantio**: troque o horizonte em "Rotações" (veja o rótulo mudar em 1 ano). Abra "Simular
 outra data" e escolha 05/03/2026.
 
 ## Limitações e pendências

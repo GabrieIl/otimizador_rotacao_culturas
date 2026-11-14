@@ -108,7 +108,7 @@ def create_app(settings: Settings | None = None) -> Starlette:
                 "location": location.model_dump(),
                 "traffic_light": {
                     "level": light.value,
-                    "emoji": light.emoji,
+                    "label": light.label,
                     "guidance": light.guidance,
                 },
                 "scoreboard": scoreboard.to_dicts(),

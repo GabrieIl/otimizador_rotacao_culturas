@@ -39,7 +39,7 @@ def plot_planting_window_heatmap(df_matrix: pl.DataFrame) -> go.Figure:
             colorscale=colorscale,
             zmin=0,
             zmax=100,
-            colorbar=dict(title="Risco (%)", tickvals=[12, 40, 78], ticktext=["🟢 Verde", "🟡 Amarelo", "🔴 Vermelho"]),
+            colorbar=dict(title="Risco (%)", tickvals=[12, 40, 78], ticktext=["Verde", "Amarelo", "Vermelho"]),
             hovertemplate="Atraso: %{y}<br>Cultura: %{x}<br>Risco de quebra: %{z:.1f}%<extra></extra>",
         )
     )
@@ -92,7 +92,7 @@ def plot_survival_scoreboard(df_scoreboard: pl.DataFrame) -> go.Figure:
 
 
 def plot_balance_scale_bars(df_balance: pl.DataFrame) -> go.Figure:
-    """Visão 3: Balança Comida (🌽) × Forragem (🌿) × Escudo (🛡️)."""
+    """Visão 3: Balança Comida x Forragem x Escudo."""
     pdf = df_balance.to_pandas()
     fig = px.bar(
         pdf,
@@ -103,9 +103,9 @@ def plot_balance_scale_bars(df_balance: pl.DataFrame) -> go.Figure:
         orientation="h",
         text="raw_label",
         color_discrete_map={
-            "🌽 Comida (Grão)": "#f59e0b",
-            "🌿 Forragem (Rebanho)": "#16a34a",
-            "🛡️ Escudo (Anti-Colapso)": "#2563eb",
+            "Comida (Grão)": "#f59e0b",
+            "Forragem (Rebanho)": "#16a34a",
+            "Escudo (Anti-Colapso)": "#2563eb",
         },
         labels={"score": "Índice da Balança (0 a 100)", "strategy_name": "Rotação", "pillar": "Pilar"},
         title="Balança: Comida × Forragem do Rebanho × Escudo Climático",

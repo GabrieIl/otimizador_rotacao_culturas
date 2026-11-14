@@ -65,7 +65,7 @@ def _location_picker(roca: Roca | None, default: LocationSpec) -> None:
     st.session_state.setdefault("lat_roca", roca.lat if roca else default.latitude)
     st.session_state.setdefault("lon_roca", roca.lon if roca else default.longitude)
 
-    with st.expander("📍 Onde fica a sua roça?", expanded=roca is None):
+    with st.expander("Onde fica a sua roça?", expanded=roca is None):
         st.caption(
             "Digite a latitude e a longitude (do GPS do celular, por exemplo) ou clique no mapa. "
             "No Nordeste as duas são negativas."
@@ -164,7 +164,7 @@ def _rain_numbers(view: LensView, rain: RainSeries, place_label: str) -> None:
 
 
 def satellite_page() -> None:
-    st.title("🛰️ O que o satélite vê na sua roça")
+    st.title("O que o satélite vê na sua roça")
     st.caption("Troque a lente e arraste o ano para ver cada dado da NASA que o app usa.")
 
     cfg = load_yaml_config("lentes")

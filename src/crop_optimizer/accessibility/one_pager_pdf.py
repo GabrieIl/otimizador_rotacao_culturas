@@ -30,12 +30,6 @@ def _latin1_safe(text: str) -> str:
         "×": "x",
         "·": "-",
         "—": "-",
-        "🟢": "[VERDE]",
-        "🟡": "[AMARELO]",
-        "🔴": "[VERMELHO]",
-        "🌽": "[COMIDA]",
-        "🌿": "[FORRAGEM]",
-        "🛡️": "[ESCUDO]",
     }
     out = text
     for k, v in replacements.items():

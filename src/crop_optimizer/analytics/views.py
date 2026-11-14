@@ -90,9 +90,8 @@ def build_planting_window_risk_matrix(
                     "crop_name": crop.name,
                     "failure_prob_pct": round(severe_loss_prob, 1),
                     "traffic_light": light.value,
-                    "traffic_emoji": light.emoji,
                     "traffic_guidance": light.guidance,
-                    "cell_display": f"{light.emoji} {light.guidance}",
+                    "cell_display": f"{light.label}: {light.guidance}",
                 }
             )
     return pl.DataFrame(rows)
@@ -124,7 +123,7 @@ def build_survival_scoreboard_frame(results: list[StrategySimulationResult]) -> 
 
 
 def build_balance_tradeoff_frame(results: list[StrategySimulationResult]) -> pl.DataFrame:
-    """Visão 3: Dados para a Balança Comida (🌽) × Forragem (🌿) × Escudo (🛡️)."""
+    """Visão 3: Dados para a Balança Comida x Forragem x Escudo."""
     rows: list[dict[str, object]] = []
     for res in results:
         short = res.strategy.short_name or res.strategy.name
@@ -133,21 +132,21 @@ def build_balance_tradeoff_frame(results: list[StrategySimulationResult]) -> pl.
                 {
                     "strategy_id": res.strategy.strategy_id,
                     "strategy_name": short,
-                    "pillar": "🌽 Comida (Grão)",
+                    "pillar": "Comida (Grão)",
                     "score": res.food_score,
                     "raw_label": f"{res.expected_food_kg_ha_year:,.0f} kg/ha·ano",
                 },
                 {
                     "strategy_id": res.strategy.strategy_id,
                     "strategy_name": short,
-                    "pillar": "🌿 Forragem (Rebanho)",
+                    "pillar": "Forragem (Rebanho)",
                     "score": res.forage_score,
                     "raw_label": f"{res.expected_forage_kg_ha_year:,.0f} kg/ha·ano",
                 },
                 {
                     "strategy_id": res.strategy.strategy_id,
                     "strategy_name": short,
-                    "pillar": "🛡️ Escudo (Anti-Colapso)",
+                    "pillar": "Escudo (Anti-Colapso)",
                     "score": res.shield_score,
                     "raw_label": f"{100.0 - res.prob_two_consecutive_losses * 100.0:.1f}% seguro",
                 },
