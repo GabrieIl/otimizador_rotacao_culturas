@@ -71,19 +71,32 @@ def rank_by_survival(results: list[StrategySimulationResult]) -> list[StrategySi
     )
 
 
+_PRIORITY_WEIGHTS = {
+    BalancePriority.COMIDA: (0.60, 0.15, 0.25),
+    BalancePriority.FORRAGEM: (0.15, 0.60, 0.25),
+    BalancePriority.ESCUDO: (0.20, 0.20, 0.60),
+    BalancePriority.EQUILIBRADO: (0.34, 0.33, 0.33),
+}
+
+
+def balance_score(result: StrategySimulationResult, priority: BalancePriority) -> float:
+    """Nota 0-100 da rotação com os pesos da prioridade (comida, forragem, escudo)."""
+    w_food, w_forage, w_shield = _PRIORITY_WEIGHTS[priority]
+    return (w_food * result.food_score) + (w_forage * result.forage_score) + (w_shield * result.shield_score)
+
+
+def rank_by_balance_priority(
+    results: list[StrategySimulationResult],
+    priority: BalancePriority = BalancePriority.EQUILIBRADO,
+) -> list[tuple[StrategySimulationResult, float]]:
+    """Todas as rotações, da melhor para a pior, com a nota da prioridade escolhida."""
+    scored = [(r, balance_score(r, priority)) for r in results]
+    return sorted(scored, key=lambda item: item[1], reverse=True)
+
+
 def select_by_balance_priority(
     results: list[StrategySimulationResult],
     priority: BalancePriority = BalancePriority.EQUILIBRADO,
 ) -> StrategySimulationResult:
     """Seleciona a rotação ideal conforme o peso escolhido na Balança Comida x Forragem x Escudo."""
-    weights = {
-        BalancePriority.COMIDA: (0.60, 0.15, 0.25),
-        BalancePriority.FORRAGEM: (0.15, 0.60, 0.25),
-        BalancePriority.ESCUDO: (0.20, 0.20, 0.60),
-        BalancePriority.EQUILIBRADO: (0.34, 0.33, 0.33),
-    }[priority]
-    w_food, w_forage, w_shield = weights
-    return max(
-        results,
-        key=lambda r: (w_food * r.food_score) + (w_forage * r.forage_score) + (w_shield * r.shield_score),
-    )
+    return rank_by_balance_priority(results, priority)[0][0]

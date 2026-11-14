@@ -101,6 +101,12 @@ ou se ainda falta conferir.
 
 ### 1.8 Classes de relevo e textura
 
+**Classe textural (triângulo textural):** regras do triângulo USDA (Soil Survey Manual; calculadora de textura
+do NRCS), as mesmas usadas pela SBCS, com os nomes em português do *Manual de descrição e coleta de solo no
+campo*. Código: `analytics/soil_texture.py`. ❌ Regras escritas de memória e conferidas por testes com
+exemplos; falta conferir no manual.
+
+
 | | |
 |---|---|
 | **Relevo** | Plano 0-3%, suave ondulado 3-8, ondulado 8-20, forte ondulado 20-45, montanhoso 45-75, escarpado > 75. SANTOS, R. D. et al. *Manual de descrição e coleta de solo no campo*. SBCS/Embrapa. ⚠️ Faixas conferidas em trabalho que as reproduz (<https://journals.ufrpe.br/index.php/BJAS/article/download/4004/482484244>), não no manual. |
@@ -266,6 +272,17 @@ Camadas usadas (identificador e título conforme o catálogo do GIBS). O produto
 | **Como usamos** | Média ponderada 0-20 cm (5/10/5 cm); M.O. = soc/10 x 1,724; sem valor no ponto → ponto a 3 km nas 4 direções, com aviso. |
 | **Onde no código** | `ingestion/soilgrids.py`; configuração em `config/aptidao.yaml` (`soilgrids`); cache em `data/bronze/soilgrids/`. |
 | **Conferido** | ✅ Respostas reais em 14/11/2026 (Casa Nova, perto de Quixadá); sede de Petrolina sem valor (urbana). |
+
+### 3.8b SoilGrids pelo WCS: solo da região (comparação)
+
+| | |
+|---|---|
+| **Quem é a fonte** | ISRIC, os mesmos mapas do SoilGrids 2.0 (seção 3.8), pelo serviço de mapas OGC WCS. |
+| **Por que WCS** | A API REST tem política de uso justo de **5 chamadas por minuto** (<https://rest.isric.org/>; FAQ <https://docs.isric.org/globaldata/soilgrids/SoilGrids_faqs_02.html>). O WCS devolve o recorte de uma área inteira em uma chamada por camada. |
+| **Endpoint** | `https://maps.isric.org/mapserv?map=/map/{prop}.map&SERVICE=WCS&VERSION=2.0.1&REQUEST=GetCoverage&COVERAGEID={prop}_{prof}_mean&FORMAT=GEOTIFF_INT16&SUBSET=long(..)&SUBSET=lat(..)&SUBSETTINGCRS=EPSG:4326&OUTPUTCRS=EPSG:4326` |
+| **O que usamos** | clay, sand, soc, phh2o, nitrogen, cec em 0-5/5-15/15-30 cm, num quadrado de ±0,25° (~55 km); média 0-20 cm; valor 0 = sem dado. |
+| **Onde no código** | `ingestion/soilgrids_wcs.py`; tela em `app/home_page.py` ("Como é o solo daqui"); cache em `data/bronze/soilgrids_wcs/`. |
+| **Conferido** | ✅ As 6 camadas responderam em ~1 s (14/11/2026); GeoTIFF int16 lido com o Pillow. |
 
 ### 3.9 Terrain Tiles (AWS Open Data): altitude e declividade
 

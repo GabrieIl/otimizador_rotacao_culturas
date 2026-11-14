@@ -99,3 +99,42 @@ def current_location() -> tuple[LocationSpec, Roca | None]:
     if roca is not None:
         return roca.to_location(), roca
     return _EXAMPLES[stored(EXAMPLE_KEY, next(iter(_EXAMPLES)))], None
+
+
+@st.cache_data(show_spinner="Comparando com o solo da região (mapas do SoilGrids)...")
+def region_soil(lat: float, lon: float):
+    """Valores 0-20 cm de cada pixel da região em volta do ponto, ou None se o serviço falhar."""
+    from crop_optimizer.ingestion.soilgrids_wcs import RegionUnavailable, region_values
+
+    try:
+        return region_values(round(lat, 3), round(lon, 3))
+    except RegionUnavailable:
+        return None
+
+
+@st.cache_data(show_spinner=False)
+def rain_chance(location_json: str, today: date):
+    """Chance de chover em cada dia do ano no ponto (marca d'água do calendário)."""
+    from crop_optimizer.analytics.rain_calendar import rain_chance_by_day
+
+    return rain_chance_by_day(rain_series(location_json, today))
+
+
+@st.cache_data(show_spinner=False)
+def zarc_decendios(ibge_code: str | None, zarc_name: str) -> list[int]:
+    """Menor risco do ZARC (20/30/40) em cada um dos 36 decêndios para a cultura; 0 = não indicado."""
+    import polars as pl
+
+    from crop_optimizer.ingestion.zarc_tabua import ZarcDataUnavailable, load_zarc_table
+
+    out = [0] * 36
+    if not ibge_code:
+        return out
+    try:
+        table = load_zarc_table([ibge_code])
+    except ZarcDataUnavailable:
+        return out
+    rows = table.filter((pl.col("geocodigo") == ibge_code) & (pl.col("cultura") == zarc_name))
+    for dec, risk in rows.group_by("decendio").agg(pl.col("risco_pct").min()).iter_rows():
+        out[int(dec) - 1] = int(risk)
+    return out

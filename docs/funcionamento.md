@@ -233,8 +233,14 @@ seções 1.4 a 1.8). Detalhes em [features/03-perfil-do-local.md](features/03-pe
 - **Identidade visual:** cores, fontes, o elemento "pixel" e o mascote estão descritos em
   [features/05-identidade-visual.md](features/05-identidade-visual.md). Para mexer no visual, use
   `src/crop_optimizer/app/theme.py` e `.streamlit/config.toml`, e reinicie o servidor.
-- **Plantio, de cima para baixo:** a resposta ("O aviso do Acauã": Pode plantar / Arriscado / Não plante
-  agora, em "X de cada 10 anos"), o porquê (chuva, veranico, ZARC) e as rotações.
+- **Início, de cima para baixo:** sua roça (município, latitude, longitude e o botão para configurar/editar),
+  a chuva do ano x média (seta verde/vermelha) e o calendário de chuva, o solo do lugar comparado com a região,
+  o solo por cultura (cards + destaque) e o terreno. Detalhes em
+  [features/06-paginas-interativas.md](features/06-paginas-interativas.md).
+- **Plantio ("O que devo plantar agora?"):** seletor de cultura com a janela oficial do ZARC, o aviso da cultura
+  (Pode plantar / Arriscado / Não plante / Espere) e o risco por atraso. Depois o porquê (calendário da safra,
+  início da chuva e veranicos), o ranking das rotações (1 a 10 anos, conforme a prioridade, com "Detalhar") e a
+  ficha técnica. "Simular outra data" fica no rodapé (só para testes).
 
 - **Barra de navegação no topo:** **Início** (perfil do local e solo por cultura), **Plantio** (chuva, ZARC,
   semáforo, placar, rádio, ficha) e **Satélite** (mapa e lentes).

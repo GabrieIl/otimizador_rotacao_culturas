@@ -202,9 +202,11 @@ def describe_status(status: RainSeasonStatus) -> tuple[str, str, Literal["info",
     else:
         quando = f"na data normal ({ref})"
     if status.state == "firmando":
+        crit = OnsetCriteria.from_config()
         return (
-            f"Caiu chuva boa em {onset}, {quando}",
-            f"Ainda falta confirmar que não vem veranico nos próximos dias. {chuva.capitalize()}.",
+            f"A chuva atingiu o critério de início em {onset}, {quando}",
+            f"Choveu {crit.rain_3d_mm:.0f} mm ou mais em 3 dias; falta confirmar que não vem veranico de mais de "
+            f"{crit.max_dry_spell_days} dias nos {crit.check_window_days} dias seguintes. {chuva.capitalize()}.",
             "warning",
         )
     level = "success" if status.delay_days <= 15 else "warning"
