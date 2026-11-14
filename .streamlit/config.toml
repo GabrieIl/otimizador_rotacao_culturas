@@ -1,0 +1,35 @@
+# Identidade visual do Acauã (ver docs/features/05-identidade-visual.md).
+# As cores e fontes daqui são as mesmas de src/crop_optimizer/app/theme.py.
+
+[client]
+# Esconde o menu de desenvolvedor (Deploy etc.) para quem usa o app.
+toolbarMode = "minimal"
+
+[theme]
+base = "light"
+# Terracota escurecida: única cor de destaque (botões, seleção, realces).
+# A terracota da prancha (#A46B4D) não chega a 4,5:1 com texto branco; #9C6346 chega a 4,9:1.
+primaryColor = "#9C6346"
+backgroundColor = "#F2EFEA"            # creme das pranchas
+secondaryBackgroundColor = "#E8E2D6"   # areia: campos e blocos
+textColor = "#163037"                  # petróleo da ave e do letreiro
+borderColor = "#D9D0BF"
+showWidgetBorder = true
+linkColor = "#7E4C33"
+linkUnderline = false
+baseRadius = "0.5rem"
+buttonRadius = "0.5rem"
+
+# Funções das fontes: Montserrat = títulos; Inter = texto; IBM Plex Mono = rótulos pequenos.
+font = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+headingFont = "Montserrat:https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&display=swap"
+codeFont = "'IBM Plex Mono':https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&display=swap"
+headingFontWeights = [800, 700, 700, 600, 600, 600]
+headingFontSizes = ["2.5rem", "1.75rem", "1.3rem", "1.1rem", "1rem", "0.9rem"]
+
+# Cores do semáforo e dos avisos (as da prancha de paleta).
+greenColor = "#266F49"
+yellowColor = "#B07A1F"   # texto de aviso: o amarelo da prancha (#DDA848) fica ilegível como texto
+redColor = "#AA281E"
+blueColor = "#2C4A52"     # avisos informativos em petróleo, sem azul fora da marca
+chartCategoricalColors = ["#163037", "#A46B4D", "#BB9252", "#266F49", "#6E8A90", "#AA281E"]

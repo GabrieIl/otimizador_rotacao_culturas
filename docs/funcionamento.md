@@ -230,6 +230,12 @@ seções 1.4 a 1.8). Detalhes em [features/03-perfil-do-local.md](features/03-pe
 
 ## 7. Como ler a tela
 
+- **Identidade visual:** cores, fontes, o elemento "pixel" e o mascote estão descritos em
+  [features/05-identidade-visual.md](features/05-identidade-visual.md). Para mexer no visual, use
+  `src/crop_optimizer/app/theme.py` e `.streamlit/config.toml`, e reinicie o servidor.
+- **Plantio, de cima para baixo:** a resposta ("O aviso do Acauã": Pode plantar / Arriscado / Não plante
+  agora, em "X de cada 10 anos"), o porquê (chuva, veranico, ZARC) e as rotações.
+
 - **Barra de navegação no topo:** **Início** (perfil do local e solo por cultura), **Plantio** (chuva, ZARC,
   semáforo, placar, rádio, ficha) e **Satélite** (mapa e lentes).
 - **Plantio não tem barra lateral.** O local vem da roça marcada no mapa (ou do município de exemplo escolhido

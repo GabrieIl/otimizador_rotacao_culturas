@@ -365,6 +365,17 @@ por cálculo.
 
 ## 6. Inspiração de código e design
 
+### 6.1 Identidade visual
+
+| Item | Origem | Licença / observação |
+|---|---|---|
+| Logo, ícone, mascote (5 poses) e paleta | Pranchas da marca Acauã, criadas pela equipe (14/11/2026); recortes em `src/crop_optimizer/app/assets/marca/` | Da equipe. Falta a versão em vetor (SVG). |
+| Montserrat, Inter, IBM Plex Mono | Google Fonts (<https://fonts.google.com>), carregadas pelo tema do Streamlit | SIL Open Font License 1.1 |
+| Contraste mínimo 4,5:1 para texto | WCAG 2.1, critério 1.4.3 (<https://www.w3.org/TR/WCAG21/#contrast-minimum>) | Conferido em `tests/test_identidade_visual.py` |
+| Capturas de tela para verificar o visual | Playwright (Chromium headless), instalado fora do projeto | Ferramenta local; não é dependência do app |
+
+### 6.2 Código e padrões
+
 | Projeto | O que aproveitamos | Licença |
 |---|---|---|
 | God's Eye View (repositório local `../gods-eye-view`, de Bilawal Sidhu) | Só **padrões**, sem copiar código: (1) cada camada mostra seu estado (atual, mais recente, fixo, sem dado); (2) atribuição de cada fonte na tela e num documento de fontes (o `DATA_SOURCES.md` deles inspirou esta seção 3). | MIT (código). Os dados de lá têm licenças próprias e não foram usados. |
