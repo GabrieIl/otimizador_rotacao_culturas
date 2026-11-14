@@ -14,7 +14,7 @@ from crop_optimizer.domain.models import (
     StrategySimulationResult,
 )
 from crop_optimizer.domain.presets import crop_map
-from crop_optimizer.engine.markov_soil import MarkovSoilModel
+from crop_optimizer.engine.markov_soil import STATE_YIELD_MULTIPLIER, MarkovSoilModel
 from crop_optimizer.lakehouse.catalog import SeasonalClimateStats
 
 
@@ -151,6 +151,10 @@ class MonteCarloRotationEngine:
         # 4. Balanço de Biomassa (Comida + Forragem) e Fluxo Financeiro Auxiliar
         # Na agricultura familiar do Semiárido (1 ha), múltiplas culturas no mesmo ano dividem área/água
         # com ganho de sinergia (LER ~ 1.15 para 2 culturas e ~ 1.25 para 3 culturas).
+        # Efeito do solo na colheita: fator por cultura (limitação do solo local x exigência da
+        # cultura) vezes a MUDANÇA do estado de Markov em relação ao de hoje (a rotação melhora ou
+        # piora o solo). Com o estado inicial padrão e sem fatores, o resultado é o de antes.
+        base_soil_mult = float(STATE_YIELD_MULTIPLIER[int(config.initial_soil_state)])
         n_annual = len(annual_crops)
         ler_factor = 1.0 if n_annual == 1 else (1.15 if n_annual == 2 else 1.25)
         area_share = ler_factor / n_annual
@@ -169,11 +173,14 @@ class MonteCarloRotationEngine:
             effective_stress = np.maximum(0.0, climate_stress[:, t] * (1.0 - soil_buffer))
 
             grain_yield_factor = np.clip(1.0 - 0.92 * effective_stress, 0.08, 1.15)
+            soil_effect = (
+                soil_out.yield_multiplier[:, t] / base_soil_mult
+            ) * config.soil_crop_factors.get(crop.crop_id, 1.0)
             realized_grain_ton = (
                 crop.base_yield_ton_ha
                 * area_share
                 * delay_yield_cap[t]
-                * soil_out.yield_multiplier[:, t]
+                * soil_effect
                 * grain_yield_factor
             )
             food_kg = realized_grain_ton * 1000.0 * crop.food_fraction
@@ -185,7 +192,7 @@ class MonteCarloRotationEngine:
                 crop.forage_yield_ton_ha
                 * area_share
                 * 1000.0
-                * (0.5 + 0.5 * soil_out.yield_multiplier[:, t])
+                * (0.5 + 0.5 * soil_effect)
                 * forage_factor
             )
 

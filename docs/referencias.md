@@ -48,6 +48,56 @@ ou se ainda falta conferir.
 | **Por quê** | Descartar os anos secos faria a chuva parecer mais pontual. Em Petrolina, descartá-los daria normal em 04/jan; mantê-los dá 11/fev. |
 | **Referência formal** | Tratamento padrão de dados censurados à direita. Falta citar uma referência de estatística/climatologia. |
 
+### 1.4 Interpretação de análise de solo: Alvarez V. et al. (1999), 5ª Aproximação
+
+| | |
+|---|---|
+| **Citação** | ALVAREZ V., V. H. et al. Interpretação dos resultados das análises de solos. In: RIBEIRO, A. C.; GUIMARÃES, P. T. G.; ALVAREZ V., V. H. (ed.). *Recomendações para o uso de corretivos e fertilizantes em Minas Gerais: 5ª aproximação*. Viçosa: CFSEMG, 1999. |
+| **Onde conferimos** | Tabelas 1, 2 e 3 reproduzidas em FREIRE, F. M. et al. *Fertilidade de solos: interpretação de resultados de análise do solo*. Embrapa Milho e Sorgo, Sistema de Produção 1 (Cultivo do Milho). <https://ainfo.cnptia.embrapa.br/digital/bitstream/item/27337/1/Fertilidade-de-solos-Interpretacao.pdf> |
+| **O que usamos** | Classes (muito baixo a muito bom) de M.O., V%, CTC a pH 7, K Mehlich-1, **P Mehlich-1 por teor de argila** e pH em água (classificação agronômica); fator M.O. = 1,724 x C.O. |
+| **Onde no código** | `config/aptidao.yaml` → `classes_analise`, `fator_carbono_para_mo`; `analytics/soil_suitability.py` (`classify`, `phosphorus_class`). |
+| **Cuidado** | As classes são de Minas Gerais. Há recomendações regionais do Nordeste (ex.: IPA/PE, 2008) que podem diferir. A edição de 2020 da CFSEMG também mudou as faixas. |
+| **Conferido** | ✅ Valores copiados das tabelas do PDF da Embrapa em 14/11/2026. |
+
+### 1.5 Avaliação de aptidão: graus de limitação por fator
+
+| | |
+|---|---|
+| **Citação** | RAMALHO FILHO, A.; BEEK, K. J. *Sistema de avaliação da aptidão agrícola das terras*. 3. ed. Rio de Janeiro: EMBRAPA-CNPS, 1995. 65 p. |
+| **O que usamos** | A ideia: comparar a terra com a exigência do uso, **fator por fator** (fertilidade, água, erosão...), com graus de limitação nulo, ligeiro, moderado, forte e muito forte. |
+| **Onde no código** | `analytics/soil_suitability.py` (`_factors`); graus em `config/aptidao.yaml`. |
+| **Conferido** | ⚠️ Referência e estrutura conferidas em trabalhos que aplicam o método. Os **limites de cada grau** no nosso código **não** vêm do manual: são da equipe (REVISAR AGRÔNOMO). |
+
+### 1.6 Notas por grau e índice: Sys et al. (1991)
+
+| | |
+|---|---|
+| **Citação** | SYS, C.; VAN RANST, E.; DEBAVEYE, J. *Land Evaluation*, Parts I-II. Ghent: ITC/Ghent University, 1991. (Part III, *Crop requirements*, 1993.) |
+| **Onde conferimos** | MOLOUDI, A.; YAGHMAEIAN MAHABADI, N. Quantitative and qualitative land suitability... *Polish Journal of Soil Science*, v. 52, n. 2, 2019. DOI: 10.17951/pjss/2019.52.2.195. |
+| **O que usamos** | Notas: sem limitação 1,0-0,95; ligeira 0,95-0,85; moderada 0,85-0,60; forte 0,60-0,40; muito forte 0,40-0 (usamos o meio de cada faixa). Classes do índice: S1 > 75, S2 50-75, S3 25-50, N < 25. Índice pelo **método da raiz quadrada** (Khidir, 1986, citado no mesmo artigo): nota mínima x raiz(produto das demais) x 100. |
+| **Onde no código** | `config/aptidao.yaml` → `notas_grau`, `classes_indice`; `analytics/soil_suitability.py` → `land_index`. |
+| **Conferido** | ✅ Faixas e classes conferidas no artigo de 2019, que cita Sys et al. O livro original não foi consultado. |
+
+### 1.7 Exigências das culturas
+
+| Cultura | O que tem fonte | Fonte | O resto |
+|---|---|---|---|
+| Milho | pH ótimo 5-7, absoluto 4,5-8,5 | FAO Ecocrop, *Zea mays* (<https://ecocrop.apps.fao.org/ecocrop/srv/en/dataSheet?id=2175>) | REVISAR AGRÔNOMO |
+| Feijão-caupi | pH ótimo 5,5-7,5, absoluto 4,3-8,8 | FAO Ecocrop, *Vigna unguiculata* | REVISAR AGRÔNOMO |
+| Feijão-caupi | **não depende de N do solo** (fixa N com *Bradyrhizobium*) | Embrapa Amazônia Ocidental, Circular Técnica 87: a inoculação sem N mineral rendeu o mesmo que a ureia (<https://www.infoteca.cnptia.embrapa.br/infoteca/bitstream/doc/1148068/1/CircTec87.pdf>) | — |
+| Sorgo | pH tolerado 4,3-8,7; prefere levemente ácido | FAO Ecocrop, *Sorghum bicolor* (página da cultura) | Faixa ótima: REVISAR AGRÔNOMO |
+| Palma forrageira | não vai bem em solo ácido ou salino; exigente em K, Ca e Mg; não tolera encharcamento | Cartilha do Projeto Propaga Palma (UFV) (<https://projetopropagapalma.ufv.br/wp-content/uploads/2022/04/Cartilhas_3.pdf>); material Embrapa (<https://www.infoteca.cnptia.embrapa.br/infoteca/bitstream/doc/534153/1/MidiaPalmaForrageira.pdf>) | Faixas numéricas: REVISAR AGRÔNOMO |
+| Capim-buffel | — | — | Tudo: REVISAR AGRÔNOMO |
+| Solo típico do semiárido | "solos arenosos e de baixa fertilidade" (qualitativo) | Embrapa, *Nutrição mineral, calagem e adubação da palma forrageira* (<https://www.infoteca.cnptia.embrapa.br/infoteca/bitstream/doc/1143032/1/NUTRICAO-MINERAL-CALAGEM-E-ADUBACAO.pdf>) | Valores: REVISAR AGRÔNOMO |
+
+### 1.8 Classes de relevo e textura
+
+| | |
+|---|---|
+| **Relevo** | Plano 0-3%, suave ondulado 3-8, ondulado 8-20, forte ondulado 20-45, montanhoso 45-75, escarpado > 75. SANTOS, R. D. et al. *Manual de descrição e coleta de solo no campo*. SBCS/Embrapa. ⚠️ Faixas conferidas em trabalho que as reproduz (<https://journals.ufrpe.br/index.php/BJAS/article/download/4004/482484244>), não no manual. |
+| **Textura** | Grupamentos do SiBCS: arenosa (areia e areia franca), média, argilosa (35-60% de argila), muito argilosa (> 60%). SANTOS, H. G. et al. *Sistema Brasileiro de Classificação de Solos*. 5. ed. Embrapa, 2018. ❌ Citação de memória. "Arenosa" foi aproximada como areia − argila ≥ 70% (REVISAR AGRÔNOMO). |
+| **Declividade** | Método de Horn (janela 3x3): HORN, B. K. P. Hill shading and the reflectance map. *Proceedings of the IEEE*, v. 69, n. 1, 1981. ❌ Citação de memória. |
+
 ---
 
 ## 2. Métodos avaliados e não adotados
@@ -196,6 +246,29 @@ Camadas usadas (identificador e título conforme o catálogo do GIBS). O produto
 | **Onde usamos** | `ingestion/geocode.py` (nome do OSM → código IBGE, comparando sem acentos); cache em `data/bronze/ibge/municipios_<UF>.json`. |
 | **Documentação** | <https://servicodados.ibge.gov.br/api/docs/localidades> |
 
+### 3.8 ISRIC SoilGrids 2.0: solo do ponto
+
+| | |
+|---|---|
+| **Quem é a fonte** | ISRIC – World Soil Information (Holanda). |
+| **Citação** | POGGIO, L. et al. SoilGrids 2.0: producing soil information for the globe with quantified spatial uncertainty. *SOIL*, v. 7, p. 217-240, 2021. ❌ Citação de memória, conferir. |
+| **Endpoint** | `GET https://rest.isric.org/soilgrids/v2.0/properties/query?lon=..&lat=..&property=clay&property=sand&property=silt&property=soc&property=nitrogen&property=phh2o&property=cec&property=bdod&depth=0-5cm&depth=5-15cm&depth=15-30cm&value=mean&value=Q0.05&value=Q0.95` |
+| **O que tem** | Mapas globais de 250 m feitos por aprendizado de máquina com perfis de solo e camadas de satélite. Média e quantis 5%/95% por profundidade. Unidades: valor ÷ `d_factor` = unidade-alvo (argila e areia %, soc g/kg, nitrogênio g/kg, pH, cec cmol(c)/kg, bdod kg/dm³). Área urbana e água vêm sem valor. |
+| **Como usamos** | Média ponderada 0-20 cm (5/10/5 cm); M.O. = soc/10 x 1,724; sem valor no ponto → ponto a 3 km nas 4 direções, com aviso. |
+| **Onde no código** | `ingestion/soilgrids.py`; configuração em `config/aptidao.yaml` (`soilgrids`); cache em `data/bronze/soilgrids/`. |
+| **Conferido** | ✅ Respostas reais em 14/11/2026 (Casa Nova, perto de Quixadá); sede de Petrolina sem valor (urbana). |
+
+### 3.9 Terrain Tiles (AWS Open Data): altitude e declividade
+
+| | |
+|---|---|
+| **Quem é a fonte** | Terrain Tiles da Tilezen/Mapzen, hospedados no AWS Open Data; entre as fontes está o **SRTM** (NASA). |
+| **Endpoint** | `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png` (sem chave). Página: <https://registry.opendata.aws/terrain-tiles/> |
+| **O que tem** | PNG com a altitude codificada: altitude = R x 256 + G + B/256 − 32768 (m). Usamos zoom 12 (~38 m por pixel no equador). |
+| **Onde no código** | `ingestion/terrain.py`; cache em `data/bronze/terrain_tiles/`. |
+| **Atribuição** | As fontes e licenças de cada dado estão na página do dataset. Falta registrar o texto de atribuição exigido. |
+| **Conferido** | ✅ Tile real em 14/11/2026 (Casa Nova: 398 a 489 m no tile). |
+
 ---
 
 ## 4. Bases de dados candidatas (ainda não usadas)
@@ -232,16 +305,16 @@ valem os termos de uso de cada site.
 | GPM & IMERG (chuva) | Global | ✅ Lente **Chuva** (IMERG diário via GIBS) | Candidato a conferir o NASA POWER no cálculo do atraso. |
 | Landsat e MODIS/VIIRS (refletância, NDVI) | Global | ✅ Lentes **Verde da lavoura** (MODIS NDVI 250 m) e **Calor da terra** (MODIS LST 1 km) | Landsat de 30 m (HLS) ainda pendente. |
 | NASA POWER | Global | ✅ **Atraso da chuva** e chuva do mês no ponto | Temperatura e radiação para ET0 (Hargreaves, CLAUDE.md §5.1) ainda não usadas. |
-| SRTM (relevo) | Global | ✅ Lente **Relevo** | Declividade e risco de erosão: candidato. |
+| SRTM (relevo) | Global | ✅ Lente **Relevo** e **declividade** no perfil do local (fator erosão) | Via Terrain Tiles (AWS). |
 | ECOSTRESS (LST e ET) | Global | ⏳ Candidato | Não está no GIBS; exige Earthdata Login. O mock usa em "Calor da terra". |
 | NLDAS / GLDAS | NLDAS: EUA · GLDAS: global | ⏳ GLDAS candidato | Umidade e evapotranspiração contínuas para validar o balanço hídrico. |
 | FAO GAEZ | Global | ⏳ Candidato forte | Aptidão por cultura (milho, sorgo, caupi) para embasar as 3 rotações. |
 | GEDI (biomassa e dossel) | Global, faixa tropical incluída | ➖ Pouco útil | Feito para vegetação alta; caatinga e roçado são baixos. |
 | USDA Ag Data Commons | EUA | ❌ Não se aplica | Equivalente sugerido: dados abertos MAPA/Embrapa (já usamos o ZARC). |
-| Web Soil Survey (NRCS) | EUA | ❌ Não se aplica | Equivalente sugerido: PronaSolos / Embrapa Solos; SoilGrids (global, já previsto no CLAUDE.md). |
+| Web Soil Survey (NRCS) | EUA | ❌ Não se aplica | **Usamos o SoilGrids** (global, Feature 3). PronaSolos / Embrapa Solos fica como candidato. |
 | Cropland Data Layer (CropScape) | EUA | ❌ Não se aplica | Equivalente sugerido: MapBiomas (uso e cobertura, 30 m, anual). |
 | PRISM | EUA | ❌ Não se aplica | Equivalente sugerido: Normais Climatológicas do INMET. |
-| SSURGO / STATSGO2 | EUA | ❌ Não se aplica | Equivalente sugerido: PronaSolos; SoilGrids. |
+| SSURGO / STATSGO2 | EUA | ❌ Não se aplica | **Usamos o SoilGrids** (Feature 3); PronaSolos candidato. |
 | NAIP (foto aérea de 1 m) | EUA | ❌ Não se aplica | A imagem de base Esri cumpre o papel visual. |
 | NLCD (cobertura do solo) | EUA | ❌ Não se aplica | Equivalente sugerido: MapBiomas. |
 | CoCoRaHS (pluviômetros voluntários) | América do Norte | ❌ Não se aplica | Equivalente sugerido: postos do INMET, da ANA e de órgãos estaduais (FUNCEME, APAC, AESA, INEMA). |
@@ -272,6 +345,8 @@ por cálculo.
 | `domain/presets.py` | Coordenadas dos municípios: falta conferir com o IBGE. |
 | `domain/presets.py` | `rainy_season_start_doy` (não é mais usado no atraso; ainda alimenta o falso `EmbrapaZarcSource` e o AppEEARS sintético). |
 | `domain/presets.py` | Parâmetros das culturas (produtividade, sensibilidade à seca, preços, custos). |
+| `config/aptidao.yaml` | Tudo marcado `# REVISAR AGRÔNOMO`: exigências das culturas, tabelas de grau, solo típico do semiárido, N disponível (ver seção 1.7). |
+| `engine/markov_soil.py` | Matrizes de transição e metas de M.O./N por estado. Desde a Feature 3, o multiplicador por estado só age como **mudança relativa** ao estado de hoje. |
 | `engine/monte_carlo.py` | Coeficientes de `_delay_and_veranico_penalty` (como o atraso vira perda de produtividade). |
 | `ingestion/nasa_power.py` | Perfis do clima sintético (`_REGIONAL_CLIMATE_PROFILE`). |
 | `ingestion/embrapa_zarc.py` | Janelas "ZARC" geradas (não são o ZARC). |

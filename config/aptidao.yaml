@@ -1,0 +1,226 @@
+# Perfil do solo e limitação por cultura (Feature 3).
+#
+# Método: compara atributos do solo com a exigência de cada cultura, fator por fator,
+# no espírito do Sistema de Avaliação da Aptidão Agrícola das Terras (Ramalho Filho & Beek,
+# Embrapa, 1995) e da avaliação paramétrica de Sys et al. (1991). Fontes completas em
+# docs/referencias.md. Convenção dos marcadores:
+#   # FONTE: ...           valor conferido na fonte citada
+#   # REVISAR AGRÔNOMO     valor definido pela equipe a partir da literatura, sem conferência
+#                          de especialista; precisa de revisão de agronomia antes de uso real
+
+# ---------------------------------------------------------------------------
+# 1. Interpretação de análise de solo (classes oficiais)
+# FONTE: Alvarez V. et al. (1999), CFSEMG 5ª Aproximação, reproduzido em Freire et al.,
+#        Embrapa Milho e Sorgo, Sistema de Produção 1 (Tabelas 1, 2 e 3).
+#        Classes: muito_baixo | baixo | medio | bom | muito_bom
+#        Cada lista traz os LIMITES SUPERIORES de muito_baixo, baixo, medio e bom.
+# ---------------------------------------------------------------------------
+classes_analise:
+  mo_pct: [0.70, 2.00, 4.00, 7.00]                # FONTE: Tabela 2 (M.O. dag/kg = %)
+  v_pct: [20.0, 40.0, 60.0, 80.0]                 # FONTE: Tabela 2 (saturação por bases)
+  ctc_t: [1.60, 4.30, 8.60, 15.00]                # FONTE: Tabela 2 (CTC pH 7, cmolc/dm3)
+  k_mg_dm3: [15.0, 40.0, 70.0, 120.0]             # FONTE: Tabela 3 (K Mehlich-1)
+  p_mehlich_por_argila:                           # FONTE: Tabela 3 (P Mehlich-1, mg/dm3)
+    - {argila_max: 15, limites: [10.0, 20.0, 30.0, 45.0]}
+    - {argila_max: 35, limites: [6.6, 12.0, 20.0, 30.0]}
+    - {argila_max: 60, limites: [4.0, 8.0, 12.0, 18.0]}
+    - {argila_max: 100, limites: [2.7, 5.4, 8.0, 12.0]}
+  # pH em água: classificação agronômica. FONTE: Tabela 1
+  # muito baixo <4,5 | baixo 4,5-5,4 | bom 5,5-6,0 | alto 6,1-7,0 | muito alto >7,0
+  ph_agronomico: [4.5, 5.5, 6.05, 7.0]
+
+# Carbono orgânico -> matéria orgânica. FONTE: Tabela 2, nota 3 (M.O. = 1,724 x C.O.)
+fator_carbono_para_mo: 1.724
+
+# ---------------------------------------------------------------------------
+# 2. Textura e água disponível
+# ---------------------------------------------------------------------------
+# Grupamentos texturais do SiBCS (Santos et al., Embrapa, 2018): arenosa = classes areia e
+# areia franca; argilosa = 35-60% de argila; muito argilosa > 60%; média = o resto.
+textura:
+  arenosa_areia_menos_argila_min: 70.0   # REVISAR AGRÔNOMO: aproximação de "areia + areia franca"
+  argilosa_argila_min: 35.0              # FONTE: SiBCS (grupamento argiloso)
+  muito_argilosa_argila_min: 60.0        # FONTE: SiBCS (grupamento muito argiloso)
+# Capacidade de água disponível (mm por metro de solo), do CLAUDE.md seção 4 (# CONFERIR)
+cad_mm_por_m:
+  arenosa: 70      # REVISAR AGRÔNOMO
+  media: 140       # REVISAR AGRÔNOMO
+  argilosa: 160    # REVISAR AGRÔNOMO
+  muito_argilosa: 160  # REVISAR AGRÔNOMO
+
+# ---------------------------------------------------------------------------
+# 3. Relevo (declividade, %) -> grau de suscetibilidade à erosão
+# FONTE (classes): Embrapa / Santos et al., Manual de descrição e coleta de solo no campo:
+#   plano 0-3 | suave ondulado 3-8 | ondulado 8-20 | forte ondulado 20-45 | montanhoso 45-75 | escarpado >75
+# ---------------------------------------------------------------------------
+relevo_classes:
+  - {max: 3, nome: "plano", grau: "nula"}            # REVISAR AGRÔNOMO (grau)
+  - {max: 8, nome: "suave ondulado", grau: "ligeira"}  # REVISAR AGRÔNOMO (grau)
+  - {max: 20, nome: "ondulado", grau: "moderada"}    # REVISAR AGRÔNOMO (grau)
+  - {max: 45, nome: "forte ondulado", grau: "forte"}  # REVISAR AGRÔNOMO (grau)
+  - {max: 75, nome: "montanhoso", grau: "muito_forte"}  # REVISAR AGRÔNOMO (grau)
+  - {max: 1000, nome: "escarpado", grau: "muito_forte"}  # REVISAR AGRÔNOMO (grau)
+
+# ---------------------------------------------------------------------------
+# 4. Graus de limitação -> nota (0 a 1)
+# FONTE (faixas): Sys et al. (1991), conforme Moloudi & Mahabadi (2019):
+#   nula 1,00-0,95 | ligeira 0,95-0,85 | moderada 0,85-0,60 | forte 0,60-0,40 | muito forte 0,40-0
+# Usamos o ponto médio de cada faixa (nula = 1,0).
+# ---------------------------------------------------------------------------
+notas_grau:
+  nula: 1.00
+  ligeira: 0.90
+  moderada: 0.725
+  forte: 0.50
+  muito_forte: 0.20
+# Índice da cultura = nota mínima x raiz(produto das outras notas) x 100 (método da raiz
+# quadrada, Khidir 1986, citado em Moloudi & Mahabadi 2019).
+# Classes do índice. FONTE: Sys et al. (1991b): S1 > 75 | S2 50-75 | S3 25-50 | N < 25
+classes_indice:
+  - {min: 75, classe: "S1", rotulo: "Bom", icone: "🟢"}
+  - {min: 50, classe: "S2", rotulo: "Atenção", icone: "🟡"}
+  - {min: 25, classe: "S3", rotulo: "Restrito", icone: "🟠"}
+  - {min: 0, classe: "N", rotulo: "Crítico", icone: "🔴"}
+
+# Grau de limitação por classe de nutriente e sensibilidade da cultura.
+# REVISAR AGRÔNOMO: tabela inteira (regra: quanto mais exigente, mais cedo a falta pesa)
+grau_por_classe_nutriente:
+  alta:  {muito_baixo: "forte",    baixo: "moderada", medio: "ligeira", bom: "nula", muito_bom: "nula"}
+  media: {muito_baixo: "moderada", baixo: "ligeira",  medio: "nula",    bom: "nula", muito_bom: "nula"}
+  baixa: {muito_baixo: "ligeira",  baixo: "nula",     medio: "nula",    bom: "nula", muito_bom: "nula"}
+  nula:  {muito_baixo: "nula",     baixo: "nula",     medio: "nula",    bom: "nula", muito_bom: "nula"}
+
+# Grau por textura (retenção de água) e sensibilidade ao déficit hídrico.
+# REVISAR AGRÔNOMO: tabela inteira
+grau_por_textura:
+  alta:  {arenosa: "forte",    media: "ligeira", argilosa: "nula", muito_argilosa: "ligeira"}
+  media: {arenosa: "moderada", media: "nula",    argilosa: "nula", muito_argilosa: "nula"}
+  baixa: {arenosa: "ligeira",  media: "nula",    argilosa: "nula", muito_argilosa: "nula"}
+  nula:  {arenosa: "nula",     media: "nula",    argilosa: "nula", muito_argilosa: "nula"}
+
+# ---------------------------------------------------------------------------
+# 5. Exigência de cada cultura
+# ---------------------------------------------------------------------------
+culturas:
+  milho_sertanejo:
+    nome: "Milho"
+    # FONTE: FAO Ecocrop, Zea mays: pH ótimo 5-7, absoluto 4,5-8,5
+    ph_otimo: [5.0, 7.0]
+    ph_absoluto: [4.5, 8.5]
+    nitrogenio: alta      # REVISAR AGRÔNOMO: cereal muito responsivo a N
+    fosforo: alta         # REVISAR AGRÔNOMO
+    potassio: media       # REVISAR AGRÔNOMO
+    agua: alta            # REVISAR AGRÔNOMO: o mais sensível a déficit hídrico do grupo
+    erosao_reduz_graus: 0  # REVISAR AGRÔNOMO: lavoura anual em linha, solo exposto
+
+  feijao_caupi:
+    nome: "Feijão-caupi"
+    # FONTE: FAO Ecocrop, Vigna unguiculata: pH ótimo 5,5-7,5, absoluto 4,3-8,8
+    ph_otimo: [5.5, 7.5]
+    ph_absoluto: [4.3, 8.8]
+    # FONTE (princípio): Embrapa Circular Técnica 87: a inoculação com Bradyrhizobium teve a
+    # mesma produtividade que a adubação nitrogenada. Fixa o próprio N.
+    nitrogenio: nula
+    fosforo: alta         # REVISAR AGRÔNOMO: leguminosa precisa de P para nodular
+    potassio: baixa       # REVISAR AGRÔNOMO
+    agua: media           # REVISAR AGRÔNOMO: ciclo curto, tolera seca melhor que o milho
+    erosao_reduz_graus: 0  # REVISAR AGRÔNOMO
+
+  sorgo_forrageiro:
+    nome: "Sorgo"
+    # FAO Ecocrop (Sorghum bicolor): tolera pH 4,3-8,7 (média 6,7) e prefere solo levemente
+    # ácido; produção pouco afetada até pH 5,7. Ótimo abaixo: REVISAR AGRÔNOMO
+    ph_otimo: [5.5, 7.5]   # REVISAR AGRÔNOMO
+    ph_absoluto: [4.3, 8.7]  # FONTE: FAO Ecocrop (faixa tolerada)
+    nitrogenio: media     # REVISAR AGRÔNOMO
+    fosforo: media        # REVISAR AGRÔNOMO
+    potassio: baixa       # REVISAR AGRÔNOMO
+    agua: baixa           # REVISAR AGRÔNOMO: tolerante à seca
+    erosao_reduz_graus: 0  # REVISAR AGRÔNOMO
+
+  palma_forrageira:
+    nome: "Palma forrageira"
+    # Cartilha UFV (Projeto Propaga Palma): não se desenvolve bem em solo ácido ou salino;
+    # é exigente em K, Ca e Mg. Faixas numéricas abaixo: REVISAR AGRÔNOMO
+    ph_otimo: [6.0, 7.5]   # REVISAR AGRÔNOMO
+    ph_absoluto: [5.0, 8.5]  # REVISAR AGRÔNOMO
+    nitrogenio: media     # REVISAR AGRÔNOMO
+    fosforo: media        # REVISAR AGRÔNOMO
+    potassio: alta        # REVISAR AGRÔNOMO (base: "exigente em K", cartilha UFV)
+    agua: nula            # REVISAR AGRÔNOMO: planta CAM, guarda água no cladódio
+    erosao_reduz_graus: 1  # REVISAR AGRÔNOMO: perene, cobre o solo o ano todo
+
+  capim_buffel:
+    nome: "Capim-buffel"
+    ph_otimo: [6.0, 8.0]   # REVISAR AGRÔNOMO
+    ph_absoluto: [5.0, 8.5]  # REVISAR AGRÔNOMO
+    nitrogenio: baixa     # REVISAR AGRÔNOMO
+    fosforo: baixa        # REVISAR AGRÔNOMO
+    potassio: baixa       # REVISAR AGRÔNOMO
+    agua: baixa           # REVISAR AGRÔNOMO
+    erosao_reduz_graus: 1  # REVISAR AGRÔNOMO: perene
+
+# pH fora do ótimo, mas dentro do absoluto: grau conforme a distância até o ótimo
+# REVISAR AGRÔNOMO
+ph_graus_fora_otimo:
+  - {ate_unidades: 0.5, grau: "ligeira"}
+  - {ate_unidades: 1.0, grau: "moderada"}
+  - {ate_unidades: 99, grau: "forte"}
+ph_grau_fora_absoluto: "muito_forte"   # REVISAR AGRÔNOMO
+
+# ---------------------------------------------------------------------------
+# 6. Solo de referência do semiárido
+# A produtividade base de cada cultura (domain/presets.py) representa a roça típica da região.
+# O efeito do solo no Monte Carlo é RELATIVO a este perfil típico:
+#   fator = índice do solo local / índice do solo de referência.
+# Atributo sem dado no local (ex.: fósforo sem análise) usa o valor de referência, ou seja,
+# não penaliza nem beneficia, e a tela avisa que foi assumido.
+# REVISAR AGRÔNOMO: todos os valores. Base qualitativa: "solos do Semiárido, arenosos e de
+# baixa fertilidade" (Embrapa, Nutrição mineral, calagem e adubação da palma forrageira).
+# ---------------------------------------------------------------------------
+solo_referencia:
+  argila_pct: 15.0
+  areia_pct: 70.0
+  mo_pct: 1.0
+  ph_h2o: 6.0
+  p_mehlich: 12.0     # com 15% de argila = classe "baixo" (Alvarez V. et al., 1999)
+  k_mg_dm3: 60.0
+  v_pct: 60.0
+  ctc_t: 5.0
+  declividade_pct: 3.0
+fator_solo_limites: [0.40, 1.25]   # REVISAR AGRÔNOMO: limites do fator relativo no Monte Carlo
+
+# ---------------------------------------------------------------------------
+# 7. Nitrogênio disponível inicial para a cadeia de Markov
+# N disponível (kg/ha/ano) ~ MO x fração de N na MO x massa de solo 0-20 cm x taxa de mineralização
+# REVISAR AGRÔNOMO: todos
+nitrogenio_disponivel:
+  fracao_n_na_mo: 0.05          # ~5% de N na matéria orgânica (relação C:N ~11,6)
+  densidade_solo_g_cm3: 1.4     # usada se o SoilGrids não trouxer densidade
+  profundidade_cm: 20
+  taxa_mineralizacao_ano: 0.02  # 1-3% ao ano é a faixa usual em livros-texto
+
+# ---------------------------------------------------------------------------
+# 8. Fontes de dados do perfil
+# ---------------------------------------------------------------------------
+soilgrids:
+  # ISRIC SoilGrids 2.0 (250 m): mapas globais feitos com perfis de solo + imagens de satélite.
+  url: "https://rest.isric.org/soilgrids/v2.0/properties/query"
+  propriedades: ["clay", "sand", "silt", "soc", "nitrogen", "phh2o", "cec", "bdod"]
+  # Camada 0-20 cm (a mesma da análise de rotina): pesos em cm de cada profundidade do SoilGrids
+  profundidades: {"0-5cm": 5, "5-15cm": 10, "15-30cm": 5}
+  timeout_segundos: 90
+
+terreno:
+  # Terrain Tiles (Tilezen/Mapzen) no AWS Open Data, formato terrarium; fontes incluem o SRTM.
+  url: "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png"
+  zoom: 12            # ~38 m por pixel no equador
+  timeout_segundos: 30
+
+# Sensibilidade a saturação por bases (Ca, Mg) por cultura. REVISAR AGRÔNOMO: todos
+bases_por_cultura:
+  milho_sertanejo: media
+  feijao_caupi: media
+  sorgo_forrageiro: baixa
+  palma_forrageira: alta   # cartilha UFV: exigente em Ca e Mg
+  capim_buffel: baixa

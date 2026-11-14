@@ -136,6 +136,9 @@ class SimulationConfig(BaseModel):
     herd_forage_target_kg_year: float = 2_400.0
     farmer_name: str = "Seu João"
     seed: int = 42
+    # Fator de produtividade do solo por cultura (crop_id -> fator), relativo ao solo típico do
+    # semiárido (analytics/soil_suitability.py). Cultura ausente = 1.0.
+    soil_crop_factors: dict[str, float] = Field(default_factory=dict)
 
 
 @dataclass(slots=True)

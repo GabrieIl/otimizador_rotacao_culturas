@@ -30,6 +30,10 @@ Leia esta tabela antes de apresentar qualquer número.
 | Município da roça (a partir da coordenada) | OpenStreetMap (Nominatim) + lista de municípios do IBGE | ✅ **Real**, consultado e em cache |
 | Imagens das lentes (chuva, água no solo, verde, calor, relevo) | NASA GIBS (IMERG, SMAP L4, MODIS, SRTM) | ✅ **Real**, tiles oficiais |
 | Imagem de base do mapa | Esri World Imagery | ✅ Real (terceiro, com atribuição) |
+| Solo do local (argila, areia, M.O., pH, CTC) | ISRIC SoilGrids 2.0 (mapa de 250 m) ou análise de campo | ✅ **Real** (mapa estimado, com faixa de incerteza) |
+| Altitude e declividade | SRTM via Terrain Tiles (AWS) | ✅ **Real** |
+| Fósforo, potássio e V% sem análise | valor típico do semiárido | ⚠️ **Assumido** e neutro (não pesa a favor nem contra) |
+| Exigência de cada cultura e graus de limitação | `config/aptidao.yaml` | ⚠️ Classes de análise com fonte; exigências **a revisar por agrônomo** |
 | Clima usado no **Monte Carlo e no semáforo** | `NasaPowerClient` em modo `offline` | ⚠️ **Sintético** (perfis fixos por município) |
 | Umidade do solo / NDVI | `NasaAppeearsClient` em modo `offline` | ⚠️ **Sintético** (sem token do AppEEARS) |
 | Preços e custos | `B3MarketDataSource` | ⚠️ **Valores fixos** em `domain/presets.py`, sem consulta |
@@ -53,6 +57,9 @@ CSV ZARC (download manual) ───► zarc/*.csv ─────────�
 NASA GIBS GetCapabilities ────► gibs/*.xml (1 por dia) ───────────────────────────► datas e URLs das lentes
 NASA GIBS tiles ──────────────────────────────────────────────────────────────────► mapa (direto no navegador)
 Nominatim + IBGE ─────────────► nominatim/, ibge/*.json ───────────────────────────► município da roça
+ISRIC SoilGrids ──────────────► soilgrids/*.json ────────────────────────────────► solo do local (Início)
+Terrain Tiles (SRTM) ─────────► terrain_tiles/*.png ─────────────────────────────► altitude e declividade
+Análise de campo (usuário) ───► data/campo/<local>.json ─────────────────────────► vale mais que o mapa
 Geradores sintéticos (ELT) ───► *.parquet ────────────────► climate_enriched ──────► gold ─► Monte Carlo
 ```
 
@@ -175,10 +182,45 @@ quando o plantio *pode* começar com risco aceitável, não o dia típico em que
 
 ---
 
-## 6. Como ler a tela
+## 6. Página Início: perfil do local e solo por cultura
 
-- **Barra de navegação no topo:** **Plantio** (chuva, ZARC, semáforo, placar, rádio, ficha) e **Satélite** (mapa e
-  lentes).
+### 6.1 Por que "por cultura"
+A criticidade do solo depende do que se vai plantar. Pouca matéria orgânica (pouco nitrogênio) pesa muito
+no milho e nada no feijão-caupi, que fixa o próprio nitrogênio. Areia, que segura pouca água, pesa no milho
+e pouco no sorgo. Por isso o app não tem mais **uma** condição do solo: cada cultura é comparada com o solo,
+**fator por fator**, e **o fator mais fraco manda**. É a lógica da avaliação de aptidão agrícola da Embrapa
+(Ramalho Filho & Beek) e da FAO (Sys et al.).
+
+### 6.2 Passo a passo
+1. **Atributos do solo**, por ordem de prioridade: análise de campo → mapa SoilGrids/SRTM → valor típico
+   do semiárido (assumido). A tela mostra a origem de cada um.
+2. **Classe oficial** de cada atributo (Alvarez V. et al., 1999). O fósforo depende da argila: 8 mg/dm³ é
+   "muito baixo" em solo arenoso e "médio" em solo argiloso.
+3. **Grau de limitação** = classe do solo x exigência da cultura (`config/aptidao.yaml`).
+4. **Nota** por grau (Sys) e **índice** 0-100 pelo método da raiz quadrada: 🟢 Bom > 75, 🟡 Atenção 50-75,
+   🟠 Restrito 25-50, 🔴 Crítico < 25.
+5. **Na simulação:** o índice é comparado com o do solo típico do semiárido. Igual ao típico = fator 1,0;
+   melhor ou pior muda a colheita simulada daquela cultura.
+
+### 6.3 Como explicar para o agricultor
+- "O mapa de satélite dá uma ideia do solo da região. **A análise de solo da sua roça vale mais**:
+  se tiver, coloque aqui."
+- "Fósforo, potássio e cálcio/magnésio **nenhum satélite mede**. Sem análise, a gente assume o típico da
+  região."
+- "O que mais atrapalha cada cultura" é o que vale corrigir primeiro (adubo, calcário, curva de nível...),
+  sempre com o técnico.
+
+### 6.4 O que ainda é provisório
+As exigências das culturas, as tabelas de grau e o solo típico estão marcados `# REVISAR AGRÔNOMO`. As
+classes da análise de solo e as notas de Sys têm fonte conferida (ver [referencias.md](referencias.md),
+seções 1.4 a 1.8). Detalhes em [features/03-perfil-do-local.md](features/03-perfil-do-local.md).
+
+---
+
+## 7. Como ler a tela
+
+- **Barra de navegação no topo:** **Início** (perfil do local e solo por cultura), **Plantio** (chuva, ZARC,
+  semáforo, placar, rádio, ficha) e **Satélite** (mapa e lentes).
 - **Barra lateral → "Data de hoje":** o atraso é calculado para essa data. Troque para mostrar outra
   época (o demo acontece fora da estação). Ex.: Irecê em 20/12/2025 mostra chuva atrasada.
 - **"🌧️ Chuva da safra":** frase principal, quatro números (quando firmou, normal, atraso, atraso usado na
@@ -187,7 +229,7 @@ quando o plantio *pode* começar com risco aceitável, não o dia típico em que
 
 ---
 
-## 7. Como mexer
+## 8. Como mexer
 
 | Quero... | Faça |
 |---|---|
@@ -198,6 +240,8 @@ quando o plantio *pode* começar com risco aceitável, não o dia típico em que
 | Forçar novo download da chuva | apague o JSON em `data/bronze/nasa_power/` |
 | Mudar textos, camadas ou zoom das lentes | `config/lentes.yaml` (confira o nome da camada no GetCapabilities do GIBS) |
 | Forçar nova leitura do catálogo do GIBS | apague o XML do dia em `data/bronze/gibs/` |
+| Ajustar exigências das culturas e graus de limitação | `config/aptidao.yaml` (linhas `# REVISAR AGRÔNOMO`) |
+| Apagar a análise de campo de um local | botão "Apagar análise salva" na Início, ou o JSON em `data/campo/` |
 
 Comandos:
 
@@ -211,7 +255,7 @@ ruff check src tests scripts                                # lint
 
 ---
 
-## 8. Regras da equipe para dados
+## 9. Regras da equipe para dados
 
 1. **Nunca inventar dados.** Se uma API falhar, mostrar o erro. Valor sintético só com aviso visível
    ("DADOS DE EXEMPLO").
@@ -222,7 +266,7 @@ ruff check src tests scripts                                # lint
 
 ---
 
-## 9. Limites que precisamos dizer em voz alta
+## 10. Limites que precisamos dizer em voz alta
 
 - A chuva é da região (~50 km), não do roçado. As lentes vão de ~10 km (chuva) a ~30 m (relevo).
 - O ZARC mostrado é a união de solos e ciclos. A janela exata depende do solo e da cultivar do agricultor.
