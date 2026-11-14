@@ -252,7 +252,8 @@ seções 1.4 a 1.8). Detalhes em [features/03-perfil-do-local.md](features/03-pe
 | Mapear outra cultura no ZARC | `culturas:` em `config/zarc.yaml` (o nome deve ser igual a `Nome_cultura` na tábua) |
 | Adicionar município | `DEFAULT_LOCATIONS` em `domain/presets.py` (lat, lon, `ibge_code`) e rode `python scripts/run_elt.py` |
 | Forçar novo download da chuva | apague o JSON em `data/bronze/nasa_power/` |
-| Mudar textos, camadas ou zoom das lentes | `config/lentes.yaml` (confira o nome da camada no GetCapabilities do GIBS) |
+| Mudar textos ou camadas das lentes | `config/lentes.yaml` (confira o nome da camada no GetCapabilities do GIBS) |
+| Mudar os limites de zoom ou a área do mapa | `config/lentes.yaml`, seção `mapa` (acima do zoom 17 a imagem de base some) |
 | Forçar nova leitura do catálogo do GIBS | apague o XML do dia em `data/bronze/gibs/` |
 | Ajustar exigências das culturas e graus de limitação | `config/aptidao.yaml` (linhas `# REVISAR AGRÔNOMO`) |
 | Apagar a análise de campo de um local | botão "Apagar análise salva" na Início, ou o JSON em `data/campo/` |

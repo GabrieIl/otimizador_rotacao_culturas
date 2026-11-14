@@ -7,7 +7,7 @@ from datetime import date
 import streamlit as st
 
 from crop_optimizer.analytics.rain_delay import RainDelayReport, build_rain_delay_report
-from crop_optimizer.app.state import get_roca
+from crop_optimizer.app.state import clear_roca, get_roca, keep, store, stored, watch
 from crop_optimizer.config import get_settings
 from crop_optimizer.domain.models import LocationSpec
 from crop_optimizer.domain.presets import DEFAULT_LOCATIONS
@@ -77,14 +77,20 @@ def soil_profile(location: LocationSpec) -> SoilProfile:
 def example_selector(container=st) -> LocationSpec:
     """Seletor dos municípios de exemplo, com a mesma escolha em todas as páginas."""
     ids = list(_EXAMPLES)
-    st.session_state.setdefault(EXAMPLE_KEY, ids[0])
+    keep(EXAMPLE_KEY, ids[0])
     chosen = container.selectbox(
         "Município de exemplo",
         ids,
-        key=EXAMPLE_KEY,
         format_func=lambda i: f"{_EXAMPLES[i].name} - {_EXAMPLES[i].state}",
+        **watch(EXAMPLE_KEY),
     )
     return _EXAMPLES[chosen]
+
+
+def select_example(location_id: str) -> None:
+    """Escolhe um município de exemplo para todas as páginas (e desmarca a roça)."""
+    store(EXAMPLE_KEY, location_id)
+    clear_roca()
 
 
 def current_location() -> tuple[LocationSpec, Roca | None]:
@@ -92,4 +98,4 @@ def current_location() -> tuple[LocationSpec, Roca | None]:
     roca = get_roca()
     if roca is not None:
         return roca.to_location(), roca
-    return _EXAMPLES[st.session_state.get(EXAMPLE_KEY, next(iter(_EXAMPLES)))], None
+    return _EXAMPLES[stored(EXAMPLE_KEY, next(iter(_EXAMPLES)))], None

@@ -7,6 +7,14 @@ gibs:
   legenda_url: "https://gibs.earthdata.nasa.gov/legends/{colormap}_H.svg"
   timeout_segundos: 120
 
+# Limites do mapa da página Satélite.
+mapa:
+  zoom_inicial: 9
+  zoom_minimo: 4     # Brasil inteiro; com menos zoom o mapa-múndi começa a se repetir
+  zoom_maximo: 17    # a imagem de base (Esri) não tem foto acima do 17 no semiárido (testado em 14/11/2026)
+  # caixa do Brasil com folga: o mapa não sai dela
+  limites: {sul: -35.0, norte: 6.5, oeste: -75.0, leste: -33.0}
+
 o_que_nao_ve: >-
   Adubo, praga, preço e a mão de obra da família. Isso quem sabe é a
   senhora, o senhor e o técnico.
@@ -27,7 +35,6 @@ lentes:
     pixel_texto: >-
       Sua roça cabe dentro de um quadrado só. A lente mostra a chuva da região,
       não do seu hectare. Quadrado vazio = não choveu naquele dia.
-    zoom: 8
 
   - id: agua_no_solo
     nome: "Água no solo"
@@ -43,7 +50,6 @@ lentes:
     pixel_texto: >-
       Cada quadrado tem uns 9 km. Mostra se a região está com terra seca ou
       úmida, não a umidade de um canteiro.
-    zoom: 8
 
   - id: verde
     nome: "Verde da lavoura"
@@ -59,7 +65,6 @@ lentes:
     pixel_texto: >-
       Cada quadrado tem 250 m. Já dá para ver manchas de lavoura, caatinga e
       área irrigada, mas não uma fileira de plantas.
-    zoom: 12
 
   - id: calor
     nome: "Calor da terra"
@@ -75,7 +80,6 @@ lentes:
     pixel_texto: >-
       Cada quadrado tem 1 km. Mostra a região quente ou fresca, não a sombra
       de uma árvore.
-    zoom: 10
 
   - id: relevo
     nome: "Relevo"
@@ -91,7 +95,6 @@ lentes:
     pixel_texto: >-
       Cada quadrado tem uns 30 m. É o dado mais fino das lentes, mas o relevo
       não muda de um ano para o outro.
-    zoom: 12
 
 # Recursos (oficiais ou candidatos) que ainda NÃO viraram lente (ver docs/referencias.md, seção 4.1):
 # - ECOSTRESS (evapotranspiração/estresse, ~70 m): não está no GIBS; exige Earthdata Login.

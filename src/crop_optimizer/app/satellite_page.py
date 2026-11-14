@@ -16,7 +16,8 @@ from crop_optimizer.analytics.satellite_lenses import (
     pixel_bounds,
     pixel_label,
 )
-from crop_optimizer.app.state import get_roca, set_roca
+from crop_optimizer.app.common import current_location, select_example
+from crop_optimizer.app.state import get_roca, keep, set_roca, store, watch
 from crop_optimizer.config import load_yaml_config
 from crop_optimizer.domain.models import LocationSpec
 from crop_optimizer.domain.presets import DEFAULT_LOCATIONS
@@ -29,6 +30,12 @@ _BASE_TILES = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imager
 _BASE_ATTR = "Imagem de base: Esri, Maxar, Earthstar Geographics"
 _ROCA_COLOR = "#F2B01E"
 _PENDING = "_ponto_pendente"
+# estado do mapa (chaves comuns de sessão: valem entre páginas)
+_ZOOM, _CENTER, _CENTER_POINT = "_mapa_zoom", "_mapa_centro", "_mapa_ponto"
+
+
+def _map_cfg() -> dict:
+    return load_yaml_config("lentes")["mapa"]
 
 
 @st.cache_data(ttl=3600, show_spinner="Lendo o catálogo de imagens da NASA (GIBS)...")
@@ -58,12 +65,23 @@ def _confirm_point(lat: float, lon: float) -> None:
     st.rerun()
 
 
-def _location_picker(roca: Roca | None, default: LocationSpec) -> None:
+def _set_point(lat: float, lon: float) -> None:
+    """Põe o ponto nos campos de latitude/longitude (antes de eles serem desenhados)."""
+    for key, value in (("lat_roca", float(lat)), ("lon_roca", float(lon))):
+        store(key, value)
+        st.session_state[key] = value
+
+
+def _location_picker(roca: Roca | None, current: LocationSpec) -> None:
+    # O ponto acompanha a seleção feita em qualquer página (exemplo na Início, roça confirmada aqui).
+    if st.session_state.get("_sat_origem") != current.location_id:
+        st.session_state["_sat_origem"] = current.location_id
+        st.session_state[_PENDING] = (current.latitude, current.longitude)
+    keep("lat_roca", current.latitude)
+    keep("lon_roca", current.longitude)
     pending = st.session_state.pop(_PENDING, None)
     if pending is not None:
-        st.session_state["lat_roca"], st.session_state["lon_roca"] = pending
-    st.session_state.setdefault("lat_roca", roca.lat if roca else default.latitude)
-    st.session_state.setdefault("lon_roca", roca.lon if roca else default.longitude)
+        _set_point(*pending)
 
     with st.expander("Onde fica a sua roça?", expanded=roca is None):
         st.caption(
@@ -71,30 +89,53 @@ def _location_picker(roca: Roca | None, default: LocationSpec) -> None:
             "No Nordeste as duas são negativas."
         )
         c1, c2, c3 = st.columns([1, 1, 1])
-        lat = c1.number_input("Latitude", min_value=-90.0, max_value=90.0, format="%.5f", key="lat_roca")
-        lon = c2.number_input("Longitude", min_value=-180.0, max_value=180.0, format="%.5f", key="lon_roca")
+        lat = c1.number_input("Latitude", min_value=-90.0, max_value=90.0, format="%.5f", **watch("lat_roca"))
+        lon = c2.number_input("Longitude", min_value=-180.0, max_value=180.0, format="%.5f", **watch("lon_roca"))
         c3.write("")
         if c3.button("Usar este ponto", type="primary", width="stretch"):
             _confirm_point(float(lat), float(lon))
 
-        examples = {f"{loc.name}/{loc.state}": loc for loc in DEFAULT_LOCATIONS}
-        cols = st.columns(len(examples) + 1)
+        cols = st.columns(len(DEFAULT_LOCATIONS) + 1)
         cols[0].caption("Ou use um exemplo:")
-        for col, (label, loc) in zip(cols[1:], examples.items(), strict=True):
-            if col.button(label, width="stretch"):
-                st.session_state[_PENDING] = (loc.latitude, loc.longitude)
+        for col, loc in zip(cols[1:], DEFAULT_LOCATIONS, strict=True):
+            if col.button(f"{loc.name}/{loc.state}", width="stretch", key=f"exemplo_{loc.location_id}"):
+                select_example(loc.location_id)  # vale para todas as páginas
                 st.rerun()
 
     if roca is not None:
-        st.success(f"**Sua roça:** {roca.label}. A página Plantio já usa esse ponto para a chuva e o ZARC.")
+        st.success(f"**Sua roça:** {roca.label}. As páginas Início e Plantio usam esse ponto.")
         if roca.aviso_municipio:
             st.warning(roca.aviso_municipio)
+    else:
+        st.info(
+            f"**Local em uso:** {current.name}/{current.state} (município de exemplo). "
+            "Marque a sua roça para usar o ponto dela em todas as páginas."
+        )
 
 
 def _build_map(view: LensView | None, lat: float, lon: float, is_roca: bool) -> folium.Map:
-    zoom = int(view.lens["zoom"]) if view else 8
-    fmap = folium.Map(location=[lat, lon], zoom_start=zoom, tiles=None, control_scale=True, max_zoom=18)
-    folium.TileLayer(_BASE_TILES, attr=_BASE_ATTR, name="Imagem de base", max_zoom=18).add_to(fmap)
+    cfg = _map_cfg()
+    box = cfg["limites"]
+    zmin, zmax = int(cfg["zoom_minimo"]), int(cfg["zoom_maximo"])
+    # zoom e centro de verdade vêm do st_folium (dinâmicos); o zoom_start fixo evita recarregar o mapa
+    fmap = folium.Map(
+        location=[lat, lon],
+        zoom_start=int(cfg["zoom_inicial"]),
+        tiles=None,
+        control_scale=True,
+        min_zoom=zmin,
+        max_zoom=zmax,
+        max_bounds=True,
+        min_lat=box["sul"],
+        max_lat=box["norte"],
+        min_lon=box["oeste"],
+        max_lon=box["leste"],
+        max_bounds_viscosity=1.0,
+        world_copy_jump=False,
+    )
+    folium.TileLayer(
+        _BASE_TILES, attr=_BASE_ATTR, name="Imagem de base", min_zoom=zmin, max_zoom=zmax, no_wrap=True
+    ).add_to(fmap)
     if view is not None and view.tile_url:
         folium.TileLayer(
             view.tile_url,
@@ -102,8 +143,10 @@ def _build_map(view: LensView | None, lat: float, lon: float, is_roca: bool) -> 
             name=view.lens["nome"],
             overlay=True,
             opacity=0.75,
-            max_native_zoom=view.layer.max_native_zoom,
-            max_zoom=18,
+            max_native_zoom=min(view.layer.max_native_zoom, zmax),
+            min_zoom=zmin,
+            max_zoom=zmax,
+            no_wrap=True,
         ).add_to(fmap)
     if view is not None:
         folium.Rectangle(
@@ -170,8 +213,8 @@ def satellite_page() -> None:
     cfg = load_yaml_config("lentes")
     lenses = {lens["id"]: lens for lens in cfg["lentes"]}
     roca = get_roca()
-    default = DEFAULT_LOCATIONS[0]
-    _location_picker(roca, default)
+    current, _ = current_location()
+    _location_picker(roca, current)
 
     lat = float(st.session_state["lat_roca"])
     lon = float(st.session_state["lon_roca"])
@@ -187,25 +230,27 @@ def satellite_page() -> None:
 
     col_lens, col_map, col_info = st.columns([1.0, 3.0, 1.4], gap="medium")
     with col_lens:
+        keep("lente", next(iter(lenses)))
         lens_id = st.radio(
             "LENTES",
             list(lenses),
             format_func=lambda i: lenses[i]["nome"],
             captions=[lenses[i]["fonte"] for i in lenses],
-            key="lente",
+            **watch("lente"),
         )
     lens = lenses[lens_id]
 
     with col_map:
         map_slot = st.container()
         c_year, c_month = st.columns([3, 2])
-        year = c_year.slider("Ano", min_value=2000, max_value=today.year, value=today.year, key="ano_lente")
+        keep("ano_lente", today.year)
+        keep("mes_lente", today.month)
+        year = c_year.slider("Ano", min_value=2000, max_value=today.year, **watch("ano_lente"))
         month = c_month.select_slider(
             "Mês",
             options=list(range(1, 13)),
-            value=today.month,
             format_func=lambda m: MONTHS_PT[m - 1][:3],
-            key="mes_lente",
+            **watch("mes_lente"),
         )
         wanted = min(date(year, month, 15), today)
 
@@ -218,15 +263,32 @@ def satellite_page() -> None:
                 view = build_lens_view(lens, layer, wanted)
                 {"sem_dado": st.warning, "mais_recente": st.info}.get(view.state, st.caption)(view.status_text)
 
+        # Zoom e centro guardados: trocar lente, ano ou página não mexe na visão do mapa. Mudar o
+        # ponto (clique, coordenada ou exemplo) recentraliza, mantendo o zoom.
+        mcfg = _map_cfg()
+        st.session_state.setdefault(_ZOOM, int(mcfg["zoom_inicial"]))
+        if st.session_state.get(_CENTER_POINT) != (lat, lon):
+            st.session_state[_CENTER_POINT] = (lat, lon)
+            st.session_state[_CENTER] = (lat, lon)
         with map_slot:
             out = st_folium(
                 _build_map(view, lat, lon, is_roca),
                 height=520,
                 use_container_width=True,
-                returned_objects=["last_clicked"],
+                zoom=st.session_state[_ZOOM],
+                center=st.session_state[_CENTER],
+                returned_objects=["last_clicked", "zoom", "center"],
                 key="mapa_lentes",
             )
-        click = (out or {}).get("last_clicked")
+        out = out or {}
+        # Antes do mapa ser desenhado no navegador, o st_folium devolve só o zoom inicial da figura
+        # (sem "center"). Só guardamos zoom e centro quando a resposta vem do mapa de verdade.
+        if out.get("center") and out.get("zoom"):
+            st.session_state[_ZOOM] = int(
+                min(max(out["zoom"], int(mcfg["zoom_minimo"])), int(mcfg["zoom_maximo"]))
+            )
+            st.session_state[_CENTER] = (out["center"]["lat"], out["center"]["lng"])
+        click = out.get("last_clicked")
         if click:
             point = (round(click["lat"], 5), round(click["lng"], 5))
             if point != st.session_state.get("_ultimo_clique"):

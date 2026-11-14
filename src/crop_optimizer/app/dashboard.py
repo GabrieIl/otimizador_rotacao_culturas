@@ -47,7 +47,7 @@ from crop_optimizer.app.common import lakehouse_catalog as _get_lakehouse_catalo
 from crop_optimizer.app.common import rain_delay_report as _rain_delay_report
 from crop_optimizer.app.home_page import home_page
 from crop_optimizer.app.satellite_page import satellite_page
-from crop_optimizer.app.state import clear_roca
+from crop_optimizer.app.state import clear_roca, keep, watch
 from crop_optimizer.config import get_settings
 from crop_optimizer.domain.models import (
     BalancePriority,
@@ -227,12 +227,12 @@ def plantio_page() -> None:
             clear_roca()
             st.rerun()
     with st.expander("Simular outra data"):
+        keep("data_simulada", date.today())
         as_of = st.date_input(
             "Data",
-            value=date.today(),
             max_value=date.today(),
             format="DD/MM/YYYY",
-            key="data_simulada",
+            **watch("data_simulada"),
             help="O atraso da chuva é calculado para esta data. Útil para mostrar outra época do ano.",
         )
     if as_of != date.today():
@@ -287,12 +287,12 @@ def plantio_page() -> None:
         st.error(f"**SEMÁFORO VERMELHO — {traffic_light.guidance}** (atraso {safra_delay_days}d | risco milho: {corn_risk_pct:.0f}%)")
 
     st.subheader("Rotações")
+    keep("horizonte", DEFAULT_HORIZON)
     horizon_years = st.segmented_control(
         "Horizonte da simulação",
         options=HORIZONS,
-        default=DEFAULT_HORIZON,
         format_func=lambda h: "1 ano" if h == 1 else f"{h} anos",
-        key="horizonte",
+        **watch("horizonte"),
         help="Quantos anos à frente os 10.000 cenários simulam. Vale para os painéis abaixo.",
     ) or DEFAULT_HORIZON
     (
