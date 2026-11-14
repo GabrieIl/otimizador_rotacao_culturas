@@ -1,0 +1,26 @@
+# Parâmetros do cálculo de atraso da chuva.
+# Todos os valores precisam de validação por alguém de agronomia/meteorologia.
+
+# Critério agronômico de início da estação chuvosa (Sivakumar, 1988):
+# primeiro dia com chuva acumulada em 3 dias >= chuva_minima_3_dias_mm,
+# sem veranico maior que veranico_max_dias nos janela_verificacao_dias seguintes.
+inicio_chuva:
+  chuva_minima_3_dias_mm: 20.0   # CONFERIR
+  dia_chuvoso_mm: 1.0            # CONFERIR: abaixo disso o dia conta como seco
+  veranico_max_dias: 7           # CONFERIR
+  janela_verificacao_dias: 30    # CONFERIR
+  busca_max_dias: 240            # quantos dias após o início do ano hidrológico procurar
+
+# Período de referência (normal climatológica OMM).
+referencia:
+  ano_inicio: 1991
+  ano_fim: 2020
+
+# Fonte da chuva: NASA POWER (PRECTOTCORR, reanálise MERRA-2/GEOS-IT).
+nasa_power:
+  inicio_historico: "1991-01-01"
+  url: "https://power.larc.nasa.gov/api/temporal/daily/point"
+  timeout_segundos: 120
+
+# Limite de atraso repassado ao motor Monte Carlo (SimulationConfig aceita 0-45).
+atraso_max_motor_dias: 45

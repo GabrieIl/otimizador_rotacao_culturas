@@ -1,0 +1,14 @@
+# Zoneamento Agrícola de Risco Climático (MAPA/Embrapa) — tábua de risco em dados abertos.
+# Fonte: https://dados.agricultura.gov.br/dataset/tabua-de-risco-zoneamento-agricola-de-risco-climatico
+# O CSV é baixado manualmente e guardado sem alteração em data/bronze/zarc/.
+
+arquivo: "dados-abertos-tabua-de-risco-safra-2026-2027.csv"
+safra: "2026/2027"
+manejo: "Sequeiro"
+
+# Cultura do motor -> Nome_cultura na tábua do ZARC.
+# Palma forrageira e capim-buffel não constam na tábua anual.
+culturas:
+  milho_sertanejo: "Milho 1ª Safra"     # CONFERIR
+  feijao_caupi: "Feijão Caupi"          # CONFERIR
+  sorgo_forrageiro: "Sorgo Forrageiro"  # CONFERIR

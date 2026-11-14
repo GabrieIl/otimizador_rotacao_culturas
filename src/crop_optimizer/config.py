@@ -3,14 +3,29 @@
 from __future__ import annotations
 
 import os
+from functools import cache
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
+import yaml
 from pydantic import BaseModel, Field
 
 
 def _default_project_root() -> Path:
     return Path(__file__).resolve().parents[2]
+
+
+def config_dir() -> Path:
+    """Diretório dos parâmetros agronômicos em YAML (config/ na raiz do projeto)."""
+    return Path(os.getenv("CROP_OPT_CONFIG_DIR", _default_project_root() / "config"))
+
+
+@cache
+def load_yaml_config(name: str) -> dict[str, Any]:
+    """Lê config/<name>.yaml. Falha alto se o arquivo não existir: parâmetro não se inventa."""
+    path = config_dir() / f"{name}.yaml"
+    with path.open(encoding="utf-8") as fh:
+        return yaml.safe_load(fh)
 
 
 class LakehousePaths(BaseModel):
@@ -23,6 +38,12 @@ class LakehousePaths(BaseModel):
     @property
     def bronze(self) -> Path:
         return self.root / "bronze"
+
+    def bronze_source(self, source: str) -> Path:
+        """Subpasta da bronze com os arquivos originais de uma fonte (cache, nunca apagado pelo ELT)."""
+        path = self.bronze / source
+        path.mkdir(parents=True, exist_ok=True)
+        return path
 
     @property
     def silver(self) -> Path:
