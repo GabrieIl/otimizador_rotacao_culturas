@@ -32,7 +32,7 @@ def test_traffic_light_thresholds() -> None:
     assert classify_traffic_light(10.0) == TrafficLightLevel.VERDE
     assert classify_traffic_light(35.0) == TrafficLightLevel.AMARELO
     assert classify_traffic_light(75.0) == TrafficLightLevel.VERMELHO
-    assert TrafficLightLevel.VERDE.emoji == "🟢"
+    assert TrafficLightLevel.VERDE.label == "Verde"
     assert TrafficLightLevel.VERMELHO.guidance.startswith("Guarde")
 
 

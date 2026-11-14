@@ -126,7 +126,6 @@ class CropSuitability:
     index: float
     suit_class: str
     label: str
-    icon: str
     factors: tuple[FactorResult, ...]
     yield_factor: float  # relativo ao solo típico do semiárido (vai para o Monte Carlo)
 
@@ -219,7 +218,6 @@ def evaluate(profile: SoilProfile) -> list[CropSuitability]:
                 index=index,
                 suit_class=row["classe"],
                 label=row["rotulo"],
-                icon=row["icone"],
                 factors=tuple(factors),
                 yield_factor=float(np.clip(index / ref_index, low, high)),
             )

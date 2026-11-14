@@ -77,10 +77,10 @@ notas_grau:
 # quadrada, Khidir 1986, citado em Moloudi & Mahabadi 2019).
 # Classes do índice. FONTE: Sys et al. (1991b): S1 > 75 | S2 50-75 | S3 25-50 | N < 25
 classes_indice:
-  - {min: 75, classe: "S1", rotulo: "Bom", icone: "🟢"}
-  - {min: 50, classe: "S2", rotulo: "Atenção", icone: "🟡"}
-  - {min: 25, classe: "S3", rotulo: "Restrito", icone: "🟠"}
-  - {min: 0, classe: "N", rotulo: "Crítico", icone: "🔴"}
+  - {min: 75, classe: "S1", rotulo: "Bom"}
+  - {min: 50, classe: "S2", rotulo: "Atenção"}
+  - {min: 25, classe: "S3", rotulo: "Restrito"}
+  - {min: 0, classe: "N", rotulo: "Crítico"}
 
 # Grau de limitação por classe de nutriente e sensibilidade da cultura.
 # REVISAR AGRÔNOMO: tabela inteira (regra: quanto mais exigente, mais cedo a falta pesa)

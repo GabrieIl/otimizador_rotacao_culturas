@@ -89,7 +89,7 @@ def cmd_simulate(
     print(f"[DuckDB] Consulta climática ({location_id}): {stats.query_ms:.2f} ms")
     print(
         f"[Monte Carlo] {len(results)} estratégias x {n_scenarios:,} cenários "
-        f"em {total_ms:.1f} ms ({total_ms / 1000.0:.3f} s) | Semáforo: {light.emoji} {light.guidance}"
+        f"em {total_ms:.1f} ms ({total_ms / 1000.0:.3f} s) | Semáforo: {light.label} - {light.guidance}"
     )
     print(
         scoreboard.select(

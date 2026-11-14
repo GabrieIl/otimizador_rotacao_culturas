@@ -97,7 +97,7 @@ def test_whatsapp_twilio_client_dry_run_and_live_mock() -> None:
     res = rank_by_survival(results)[0]
     msg = build_whatsapp_summary_message("Dona Maria", loc, 21, TrafficLightLevel.VERMELHO, trad, res)
     assert "Dona Maria" in msg
-    assert "🔴" in msg
+    assert "Sinal vermelho" in msg and "Olá, *Dona Maria*!" in msg
 
     client_dry = TwilioWhatsAppClient()
     dry_res = client_dry.send_message("+5587999990000", msg)

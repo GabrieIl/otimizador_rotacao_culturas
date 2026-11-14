@@ -25,8 +25,9 @@ class TrafficLightLevel(StrEnum):
     VERMELHO = "vermelho"
 
     @property
-    def emoji(self) -> str:
-        return {"verde": "🟢", "amarelo": "🟡", "vermelho": "🔴"}[self.value]
+    def label(self) -> str:
+        """Nome do nível em texto (o semáforo nunca depende só da cor)."""
+        return {"verde": "Verde", "amarelo": "Amarelo", "vermelho": "Vermelho"}[self.value]
 
     @property
     def guidance(self) -> str:
