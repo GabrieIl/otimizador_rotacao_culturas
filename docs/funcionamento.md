@@ -27,6 +27,9 @@ Leia esta tabela antes de apresentar qualquer número.
 | Chuva diária usada no **atraso da chuva** | NASA POWER (`PRECTOTCORR`) | ✅ **Real**, baixada e em cache |
 | Data normal de início da chuva | calculada da chuva real de 1991-2020 | ✅ **Real** (critério de Sivakumar, 1988) |
 | Janelas oficiais de plantio | Tábua de risco do ZARC (MAPA/Embrapa), safra 2026/2027 | ✅ **Real**, CSV oficial |
+| Município da roça (a partir da coordenada) | OpenStreetMap (Nominatim) + lista de municípios do IBGE | ✅ **Real**, consultado e em cache |
+| Imagens das lentes (chuva, água no solo, verde, calor, relevo) | NASA GIBS (IMERG, SMAP L4, MODIS, SRTM) | ✅ **Real**, tiles oficiais |
+| Imagem de base do mapa | Esri World Imagery | ✅ Real (terceiro, com atribuição) |
 | Clima usado no **Monte Carlo e no semáforo** | `NasaPowerClient` em modo `offline` | ⚠️ **Sintético** (perfis fixos por município) |
 | Umidade do solo / NDVI | `NasaAppeearsClient` em modo `offline` | ⚠️ **Sintético** (sem token do AppEEARS) |
 | Preços e custos | `B3MarketDataSource` | ⚠️ **Valores fixos** em `domain/presets.py`, sem consulta |
@@ -34,8 +37,9 @@ Leia esta tabela antes de apresentar qualquer número.
 | Penalidade do atraso e do veranico na produtividade | `engine/monte_carlo.py` | ⚠️ Coeficientes sem fonte |
 | Janelas do "ZARC" dentro do ELT (`EmbrapaZarcSource`) | gerado a partir de datas fixas | ❌ **Falso**: não usar; substituir pela tábua real |
 
-Hoje só a seção **"🌧️ Chuva da safra"** é toda baseada em dado real. O semáforo e o placar recebem o atraso
-real, mas o resto do clima deles ainda é sintético.
+Hoje a seção **"🌧️ Chuva da safra"** (página Plantio) e a página **Satélite** são todas baseadas em dado
+real. O semáforo e o placar recebem o atraso real, mas o resto do clima deles ainda é sintético e vem do
+**município de exemplo** mais próximo, mesmo quando a roça foi marcada no mapa.
 
 ---
 
@@ -44,8 +48,11 @@ real, mas o resto do clima deles ainda é sintético.
 ```
 Fonte externa                   data/bronze/<fonte>/        data/silver/              App
 ──────────────                  (arquivo original, cache)   (recorte/limpeza)
-NASA POWER API ───────────────► nasa_power/*.json ─────────────────────────────────► atraso da chuva
+NASA POWER API ───────────────► nasa_power/*.json ─────────────────────────────────► atraso da chuva, chuva do mês
 CSV ZARC (download manual) ───► zarc/*.csv ───────────────► zarc/*.parquet ────────► janelas por cultura
+NASA GIBS GetCapabilities ────► gibs/*.xml (1 por dia) ───────────────────────────► datas e URLs das lentes
+NASA GIBS tiles ──────────────────────────────────────────────────────────────────► mapa (direto no navegador)
+Nominatim + IBGE ─────────────► nominatim/, ibge/*.json ───────────────────────────► município da roça
 Geradores sintéticos (ELT) ───► *.parquet ────────────────► climate_enriched ──────► gold ─► Monte Carlo
 ```
 
@@ -132,8 +139,46 @@ quando o plantio *pode* começar com risco aceitável, não o dia típico em que
 
 ---
 
-## 5. Como ler a tela
+## 5. Página Satélite: a roça no mapa e as lentes
 
+### 5.1 Marcar a roça
+- Latitude e longitude digitadas (do GPS do celular, por exemplo) ou um clique no mapa. Depois,
+  **"Usar este ponto"**.
+- O município vem de dois passos: o **OpenStreetMap** diz o nome do município e a UF daquela coordenada, e a
+  **lista oficial do IBGE** dá o código de 7 dígitos. Esse código liga a roça à tábua do ZARC.
+- A roça vale para as duas páginas. Na Plantio, **a chuva e o ZARC passam a ser do ponto da roça**. A
+  simulação (Monte Carlo) continua com o clima de exemplo do município pré-cadastrado mais perto, e a tela
+  diz qual e a quantos km.
+
+### 5.2 O que cada lente mostra
+| Lente | Satélite / produto | Quadrado | O que ajuda a ver |
+|---|---|---|---|
+| Chuva | GPM IMERG (NASA/JAXA) | ~10 km | onde choveu num dia |
+| Água no solo | SMAP L4 (satélite + modelo) | ~9 km | terra seca ou úmida na zona das raízes |
+| Verde da lavoura | MODIS Terra, NDVI de 16 dias | 250 m | lavoura, caatinga verde ou seca, área irrigada |
+| Calor da terra | MODIS Terra, temperatura da superfície de dia, 8 dias | 1 km | chão quente que seca a planta |
+| Relevo | SRTM (2000) | ~30 m | baixios e serras |
+
+- **Ano + mês:** a lente mostra a imagem que cobre o dia 15 daquele mês. Se ainda não existe, mostra a mais
+  recente e avisa. Se a série ainda não tinha começado (SMAP antes de 2015), diz isso em vez de mostrar
+  um mapa vazio.
+- **Quadrado tracejado em volta da roça** = tamanho de um pixel da lente. É a melhor forma de explicar ao
+  agricultor que o satélite enxerga a região, não o roçado.
+- **Por que dá para confiar:** as imagens são as oficiais da NASA (GIBS/EOSDIS), as mesmas do NASA
+  Worldview. Os nomes das camadas e as datas disponíveis são lidos do catálogo do GIBS todo dia, não
+  escritos à mão.
+- **Alinhado com o desafio:** as 5 lentes e o NASA POWER estão na lista oficial "NASA Data & Resources" do
+  desafio (SMAP, GPM IMERG, MODIS, SRTM, POWER). O cruzamento completo, inclusive com os recursos que só
+  cobrem os EUA, está em [referencias.md](referencias.md), seção 4.1.
+- **Diferenças em relação ao mock:** o GIBS não tem NDVI de Sentinel-2/Landsat nem ECOSTRESS. Usamos o MODIS
+  e o rótulo diz isso. Os detalhes estão em [features/02-mapa-e-lentes.md](features/02-mapa-e-lentes.md).
+
+---
+
+## 6. Como ler a tela
+
+- **Barra de navegação no topo:** **Plantio** (chuva, ZARC, semáforo, placar, rádio, ficha) e **Satélite** (mapa e
+  lentes).
 - **Barra lateral → "Data de hoje":** o atraso é calculado para essa data. Troque para mostrar outra
   época (o demo acontece fora da estação). Ex.: Irecê em 20/12/2025 mostra chuva atrasada.
 - **"🌧️ Chuva da safra":** frase principal, quatro números (quando firmou, normal, atraso, atraso usado na
@@ -142,7 +187,7 @@ quando o plantio *pode* começar com risco aceitável, não o dia típico em que
 
 ---
 
-## 6. Como mexer
+## 7. Como mexer
 
 | Quero... | Faça |
 |---|---|
@@ -151,6 +196,8 @@ quando o plantio *pode* começar com risco aceitável, não o dia típico em que
 | Mapear outra cultura no ZARC | `culturas:` em `config/zarc.yaml` (o nome deve ser igual a `Nome_cultura` na tábua) |
 | Adicionar município | `DEFAULT_LOCATIONS` em `domain/presets.py` (lat, lon, `ibge_code`) e rode `python scripts/run_elt.py` |
 | Forçar novo download da chuva | apague o JSON em `data/bronze/nasa_power/` |
+| Mudar textos, camadas ou zoom das lentes | `config/lentes.yaml` (confira o nome da camada no GetCapabilities do GIBS) |
+| Forçar nova leitura do catálogo do GIBS | apague o XML do dia em `data/bronze/gibs/` |
 
 Comandos:
 
@@ -164,7 +211,7 @@ ruff check src tests scripts                                # lint
 
 ---
 
-## 7. Regras da equipe para dados
+## 8. Regras da equipe para dados
 
 1. **Nunca inventar dados.** Se uma API falhar, mostrar o erro. Valor sintético só com aviso visível
    ("DADOS DE EXEMPLO").
@@ -175,9 +222,9 @@ ruff check src tests scripts                                # lint
 
 ---
 
-## 8. Limites que precisamos dizer em voz alta
+## 9. Limites que precisamos dizer em voz alta
 
-- A chuva é da região (~50 km), não do roçado.
+- A chuva é da região (~50 km), não do roçado. As lentes vão de ~10 km (chuva) a ~30 m (relevo).
 - O ZARC mostrado é a união de solos e ciclos. A janela exata depende do solo e da cultivar do agricultor.
 - O critério de "chuva firme" veio da África Ocidental e ainda não foi calibrado para o semiárido brasileiro.
 - O modelo não vê fertilidade, pragas, preço, mão de obra nem a chuva do próximo mês. A previsão sazonal

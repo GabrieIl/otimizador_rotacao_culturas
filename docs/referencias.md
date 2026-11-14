@@ -10,6 +10,7 @@ ou se ainda falta conferir.
 3. [Bases de dados usadas](#3-bases-de-dados-usadas)
 4. [Bases de dados candidatas (ainda não usadas)](#4-bases-de-dados-candidatas-ainda-não-usadas)
 5. [Valores sem fonte no código](#5-valores-sem-fonte-no-código)
+6. [Inspiração de código e design](#6-inspiração-de-código-e-design)
 
 ---
 
@@ -140,6 +141,61 @@ combinações não são indicadas no zoneamento desta safra.
 | **Valores** | Petrolina 2611101 · Quixadá 2311306 · Sousa 2516201 · Irecê 2914604 |
 | **Onde usamos** | `domain/presets.py` → `LocationSpec.ibge_code`. |
 
+### 3.4 NASA GIBS: imagens das lentes (página Satélite)
+
+| | |
+|---|---|
+| **Quem é a fonte** | NASA, Global Imagery Browse Services (GIBS), parte do EOSDIS/ESDIS. As mesmas imagens do NASA Worldview. |
+| **Site / documentação** | <https://www.earthdata.nasa.gov/engage/open-data-services-software/earthdata-developer-portal/gibs-api> · Worldview: <https://worldview.earthdata.nasa.gov/> |
+| **Catálogo usado** | GetCapabilities WMTS, EPSG:3857, "best": <https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/wmts.cgi?SERVICE=WMTS&REQUEST=GetCapabilities> |
+| **O que tem** | Tiles PNG/JPEG prontos para mapa web, por camada e data. O catálogo traz nome, grade (zoom máximo nativo), períodos disponíveis e o modelo de URL de cada camada. Legendas oficiais em `https://gibs.earthdata.nasa.gov/legends/<colormap>_H.svg`. |
+| **Acesso** | Público, sem login e sem chave. |
+| **Onde usamos** | `src/crop_optimizer/ingestion/gibs.py` (catálogo, datas, URLs); `analytics/satellite_lenses.py`; `app/satellite_page.py`; configuração em `config/lentes.yaml`. |
+| **Cache local** | `data/bronze/gibs/wmts_epsg3857_best_AAAAMMDD.xml` (um por dia). Os tiles são baixados pelo navegador, sem cache nosso. |
+| **Agradecimento sugerido** | "We acknowledge the use of imagery provided by services from NASA's Global Imagery Browse Services (GIBS), part of NASA's Earth Science Data and Information System (ESDIS)." ❌ Texto de memória, conferir na documentação do GIBS. |
+| **Conferido** | Nomes das camadas, períodos, modelos de URL e legendas conferidos no catálogo e com pedidos reais em 14/11/2026 (HTTP 200). |
+
+Camadas usadas (identificador e título conforme o catálogo do GIBS). O produto de origem de cada uma é
+**provável** e precisa ser conferido na página da camada no Worldview:
+
+| Lente | Camada GIBS | Título no catálogo | Grade nativa | Produto de origem provável |
+|---|---|---|---|---|
+| Chuva | `IMERG_Precipitation_Rate` | Precipitation Rate (IMERG) | Level6 | GPM IMERG (NASA/JAXA), ~0,1° |
+| Água no solo | `SMAP_L4_Analyzed_Root_Zone_Soil_Moisture` | Root Zone Soil Moisture (L4, 12z Instantaneous, Model Value-Added, SMAP) | Level6 | SMAP L4 (SPL4SMAU), 9 km |
+| Verde da lavoura | `MODIS_Terra_L3_NDVI_16Day` | Vegetation Index (16-Day, MODIS, Terra) | Level9 | MOD13Q1, 250 m |
+| Calor da terra | `MODIS_Terra_L3_Land_Surface_Temp_8Day_Day` | Land Surface Temperature (8-Day, Day, MODIS, Terra) | Level7 | MOD11A2, 1 km |
+| Relevo | `SRTM_Color_Index` | Digital Elevation Model (Color Index, SRTM) | Level12 | SRTM (NASA/NGA, 2000), ~30 m |
+
+### 3.5 Esri World Imagery: imagem de base do mapa
+
+| | |
+|---|---|
+| **Quem é a fonte** | Esri, com imagens de Maxar, Earthstar Geographics e outros provedores. |
+| **URL de tiles** | `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}` |
+| **Atribuição na tela** | "Imagem de base: Esri, Maxar, Earthstar Geographics" |
+| **Onde usamos** | `app/satellite_page.py` (`_BASE_TILES`). |
+| **Cuidado** | Serve só de fundo visual, sem nenhum cálculo. Revisar os termos de uso da Esri antes de qualquer uso comercial. |
+
+### 3.6 OpenStreetMap Nominatim: município da coordenada
+
+| | |
+|---|---|
+| **Quem é a fonte** | Fundação OpenStreetMap. Dados © OpenStreetMap contributors, licença ODbL 1.0. |
+| **Endpoint** | `GET https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=..&lon=..&zoom=10&addressdetails=1&accept-language=pt-BR` |
+| **O que usamos da resposta** | `address.city` / `municipality` / `town` / `village` (nome do município) e `address["ISO3166-2-lvl4"]` (ex.: `BR-PE`). |
+| **Regras de uso** | No máximo 1 pedido por segundo, User-Agent identificando o app (usamos um genérico, sem dados pessoais) e cache das respostas. <https://operations.osmfoundation.org/policies/nominatim/> |
+| **Onde usamos** | `ingestion/geocode.py`; configuração em `config/localizacao.yaml`; cache em `data/bronze/nominatim/`. |
+
+### 3.7 IBGE: API de localidades (código dos municípios)
+
+| | |
+|---|---|
+| **Quem é a fonte** | Instituto Brasileiro de Geografia e Estatística (IBGE), serviço de dados. |
+| **Endpoint** | `GET https://servicodados.ibge.gov.br/api/v1/localidades/estados/{UF}/municipios` |
+| **O que tem** | Lista oficial de municípios da UF, com `id` (código IBGE de 7 dígitos) e `nome`. |
+| **Onde usamos** | `ingestion/geocode.py` (nome do OSM → código IBGE, comparando sem acentos); cache em `data/bronze/ibge/municipios_<UF>.json`. |
+| **Documentação** | <https://servicodados.ibge.gov.br/api/docs/localidades> |
+
 ---
 
 ## 4. Bases de dados candidatas (ainda não usadas)
@@ -149,7 +205,60 @@ combinações não são indicadas no zoneamento desta safra.
 | CHIRPS | Climate Hazards Center (UCSB) | <https://www.chc.ucsb.edu/data/chirps> | Satélite + estações, ~5 km, muito usado no semiárido. Serviria para conferir as datas do POWER. | Versão final sai uns 45 dias depois. Acesso por ponto via API ClimateSERV ainda não testado. |
 | GPM IMERG | NASA | <https://gpm.nasa.gov/data/imerg> | Satélite "puro", atraso de horas. | Exige login no NASA Earthdata. |
 | Normais Climatológicas 1991-2020 | INMET | <https://portal.inmet.gov.br/normais> | Chuva mensal e de 10 em 10 dias por estação oficial. Serviria para validar o POWER. | Não achamos CSV para download direto. |
+| ECOSTRESS (ECO_L3T_JET / ECO_L4T_ESI) | NASA LP DAAC | <https://cmr.earthdata.nasa.gov/search/concepts/C4057232489-LPCLOUD.html> | Evapotranspiração e estresse hídrico a ~70 m. Está no mock ("Calor da terra"). | Não está no GIBS; exige Earthdata Login. |
+| HLS L30/S30 (Landsat + Sentinel-2) | NASA LP DAAC | <https://www.earthdata.nasa.gov/data/catalog/lpcloud-hlsl30-2.0> | Foto de 30 m a cada poucos dias. Está no mock ("Verde da lavoura"). | Está no GIBS (`HLS_*_Nadir_BRDF_Adjusted_Reflectance`), mas cada dia só cobre a faixa de uma passagem. Falta escolher a data com imagem sem nuvem. |
+| SMAP L3 Enhanced 9 km (SPL3SMP_E) | NASA NSIDC DAAC | <https://nsidc.org/data/spl3smp_e/versions/6> | Umidade da superfície medida pelo satélite. | No GIBS, com falhas entre órbitas. Usamos o L4 (sem falhas). |
+| GRACE/GRACE-FO Mascon | NASA PO.DAAC / JPL | <https://podaac.jpl.nasa.gov/dataset/TELLUS_GRAC-GRFO_MASCON_CRI_GRID_RL06.3_V4> | Água subterrânea da região (~300 km), mensal. | No GIBS só até 07/2022. |
 | API Agritec (ZARC) | Embrapa AgroAPI | <https://www.agroapi.cnptia.embrapa.br/portal/assets/docs/agritec.pdf> | ZARC por API, com cultivares indicadas. | Precisa de cadastro; grátis até um limite. |
+
+GRACE/GRACE-FO e o SMAP L3 Enhanced vieram de um catálogo não oficial
+(<https://spacedata.swapniltamse.com/challenges/field-shift-adapting-farms/>) e **não constam na lista
+oficial abaixo**. Ficam só como candidatos.
+
+### 4.1 Recursos oficiais do desafio × o que usamos
+
+Fonte: aba "Resources" do desafio *Field Shift: Adapting Farms with NASA Data*,
+<https://www.spaceappschallenge.org/2026/challenges/adapting-farms-with-nasa-data/?tab=resources>
+(conteúdo colado pela equipe em 14/11/2026; o site não abriu daqui por um erro de certificado SSL).
+
+A NASA avisa na página que não endossa entidades fora do governo dos EUA e que, em sites de terceiros,
+valem os termos de uso de cada site.
+
+**NASA Data & Resources**
+
+| Recurso oficial | Cobertura | No projeto | Observação |
+|---|---|---|---|
+| SMAP (umidade do solo) | Global | ✅ Lente **Água no solo** (SMAP L4, zona das raízes, via GIBS) | O texto oficial fala da umidade de superfície medida a cada 2-3 dias (L3). Usamos o L4 para o mapa não ficar com faixas vazias entre as órbitas. |
+| GPM & IMERG (chuva) | Global | ✅ Lente **Chuva** (IMERG diário via GIBS) | Candidato a conferir o NASA POWER no cálculo do atraso. |
+| Landsat e MODIS/VIIRS (refletância, NDVI) | Global | ✅ Lentes **Verde da lavoura** (MODIS NDVI 250 m) e **Calor da terra** (MODIS LST 1 km) | Landsat de 30 m (HLS) ainda pendente. |
+| NASA POWER | Global | ✅ **Atraso da chuva** e chuva do mês no ponto | Temperatura e radiação para ET0 (Hargreaves, CLAUDE.md §5.1) ainda não usadas. |
+| SRTM (relevo) | Global | ✅ Lente **Relevo** | Declividade e risco de erosão: candidato. |
+| ECOSTRESS (LST e ET) | Global | ⏳ Candidato | Não está no GIBS; exige Earthdata Login. O mock usa em "Calor da terra". |
+| NLDAS / GLDAS | NLDAS: EUA · GLDAS: global | ⏳ GLDAS candidato | Umidade e evapotranspiração contínuas para validar o balanço hídrico. |
+| FAO GAEZ | Global | ⏳ Candidato forte | Aptidão por cultura (milho, sorgo, caupi) para embasar as 3 rotações. |
+| GEDI (biomassa e dossel) | Global, faixa tropical incluída | ➖ Pouco útil | Feito para vegetação alta; caatinga e roçado são baixos. |
+| USDA Ag Data Commons | EUA | ❌ Não se aplica | Equivalente sugerido: dados abertos MAPA/Embrapa (já usamos o ZARC). |
+| Web Soil Survey (NRCS) | EUA | ❌ Não se aplica | Equivalente sugerido: PronaSolos / Embrapa Solos; SoilGrids (global, já previsto no CLAUDE.md). |
+| Cropland Data Layer (CropScape) | EUA | ❌ Não se aplica | Equivalente sugerido: MapBiomas (uso e cobertura, 30 m, anual). |
+| PRISM | EUA | ❌ Não se aplica | Equivalente sugerido: Normais Climatológicas do INMET. |
+| SSURGO / STATSGO2 | EUA | ❌ Não se aplica | Equivalente sugerido: PronaSolos; SoilGrids. |
+| NAIP (foto aérea de 1 m) | EUA | ❌ Não se aplica | A imagem de base Esri cumpre o papel visual. |
+| NLCD (cobertura do solo) | EUA | ❌ Não se aplica | Equivalente sugerido: MapBiomas. |
+| CoCoRaHS (pluviômetros voluntários) | América do Norte | ❌ Não se aplica | Equivalente sugerido: postos do INMET, da ANA e de órgãos estaduais (FUNCEME, APAC, AESA, INEMA). |
+| USGS NWIS (água) | EUA | ❌ Não se aplica | Equivalente sugerido: ANA Hidroweb. |
+| USDA AMS Market News (preços) | EUA | ❌ Não se aplica | Equivalente sugerido: CONAB (hoje os preços do app são fixos, ver seção 5). |
+| USDA NASS QuickStats (produção) | EUA | ❌ Não se aplica | Equivalente sugerido: IBGE PAM via SIDRA, tabela 5457 (já prevista no CLAUDE.md para validação). |
+| OpenET | Oeste dos EUA | ❌ Não se aplica | — |
+| USFS LANDFIRE | EUA | ❌ Não se aplica | Equivalente sugerido: MapBiomas. |
+
+**Space Agency Partner Resources**
+
+| Recurso oficial | Cobertura | No projeto | Observação |
+|---|---|---|---|
+| Copernicus Sentinel-2 (ESA) | Global | ⏳ Candidato | NDVI de 10 m, o que o mock pedia em "Verde da lavoura". Acesso via Copernicus Data Space (conta gratuita). |
+| ERA5 (ECMWF) | Global | ⏳ Candidato | Reanálise para conferir a chuva e a temperatura do NASA POWER. |
+
+Os equivalentes brasileiros são **sugestões da equipe**. Ainda não foram baixados nem conferidos.
 
 ---
 
@@ -167,3 +276,13 @@ por cálculo.
 | `ingestion/nasa_power.py` | Perfis do clima sintético (`_REGIONAL_CLIMATE_PROFILE`). |
 | `ingestion/embrapa_zarc.py` | Janelas "ZARC" geradas (não são o ZARC). |
 | `config/chuva.yaml` | Limiares de Sivakumar aplicados ao semiárido brasileiro sem calibração local (`# CONFERIR`). |
+
+---
+
+## 6. Inspiração de código e design
+
+| Projeto | O que aproveitamos | Licença |
+|---|---|---|
+| God's Eye View (repositório local `../gods-eye-view`, de Bilawal Sidhu) | Só **padrões**, sem copiar código: (1) cada camada mostra seu estado (atual, mais recente, fixo, sem dado); (2) atribuição de cada fonte na tela e num documento de fontes (o `DATA_SOURCES.md` deles inspirou esta seção 3). | MIT (código). Os dados de lá têm licenças próprias e não foram usados. |
+| Mock "O que o satélite vê na sua roça" (equipe) | Layout da página Satélite: lentes à esquerda, mapa com a roça, ano embaixo, cartões à direita. | Interno |
+

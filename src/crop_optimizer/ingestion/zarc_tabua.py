@@ -11,6 +11,7 @@ o plantio não é indicado.
 from __future__ import annotations
 
 import calendar
+import json
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -75,10 +76,18 @@ def load_zarc_table(ibge_codes: list[str], settings: Settings | None = None) -> 
     csv_path = settings.paths.bronze_source(SOURCE_DIR) / cfg["arquivo"]
     silver = _silver_path(settings, cfg["arquivo"])
 
+    codes_file = silver.with_suffix(".codigos.json")
+    scanned: set[str] = set()
     if silver.exists():
-        cached = pl.read_parquet(silver)
-        if set(ibge_codes) <= set(cached["geocodigo"].unique().to_list()):
-            return cached.filter(pl.col("geocodigo").is_in(ibge_codes))
+        scanned = (
+            set(json.loads(codes_file.read_text()))
+            if codes_file.exists()
+            else set(pl.read_parquet(silver)["geocodigo"].unique().to_list())  # recorte antigo
+        )
+    if silver.exists() and set(ibge_codes) <= scanned:
+        return pl.read_parquet(silver).filter(pl.col("geocodigo").is_in(ibge_codes))
+    # relê o CSV para a união dos códigos (os já recortados + os novos) e regrava o recorte
+    to_scan = sorted(scanned | set(ibge_codes))
 
     if not csv_path.exists():
         raise ZarcDataUnavailable(
@@ -88,7 +97,7 @@ def load_zarc_table(ibge_codes: list[str], settings: Settings | None = None) -> 
 
     wide = (
         pl.scan_csv(csv_path, separator=";", infer_schema=False, encoding="utf8-lossy")
-        .filter(pl.col("geocodigo").is_in(ibge_codes) & (pl.col("Nome_Outros_Manejos") == cfg["manejo"]))
+        .filter(pl.col("geocodigo").is_in(to_scan) & (pl.col("Nome_Outros_Manejos") == cfg["manejo"]))
         .collect()
     )
     long = (
@@ -115,7 +124,8 @@ def load_zarc_table(ibge_codes: list[str], settings: Settings | None = None) -> 
         .filter(pl.col("risco_pct") > 0)
     )
     long.write_parquet(silver)
-    return long
+    codes_file.write_text(json.dumps(to_scan))
+    return long.filter(pl.col("geocodigo").is_in(ibge_codes))
 
 
 def _circular_span(decs: list[int]) -> tuple[int, int]:
