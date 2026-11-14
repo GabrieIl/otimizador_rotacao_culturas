@@ -19,8 +19,10 @@ from crop_optimizer.domain.presets import location_map
 from crop_optimizer.engine.rain_onset import (
     OnsetCriteria,
     RainSeasonStatus,
+    VeranicoClimatology,
     assess_season,
     build_reference,
+    current_dry_days,
 )
 from crop_optimizer.ingestion.rain_history import fetch_rain_series
 from crop_optimizer.ingestion.zarc_tabua import (
@@ -67,6 +69,20 @@ class RainDelayReport:
     crop_windows: list[CropWindowStatus] = field(default_factory=list)
     zarc_safra: str | None = None
     zarc_error: str | None = None
+    veranico: VeranicoClimatology | None = None
+    dry_days_now: int = 0  # dias seguidos sem chuva até o último dado
+
+    @property
+    def veranico_alert(self) -> str | None:
+        """Aviso de veranico na safra em curso (só depois que a chuva firmou)."""
+        if self.veranico is None or self.status.state not in ("firmou", "firmando"):
+            return None
+        warn = int(load_yaml_config("chuva")["veranico"]["aviso_dias_secos"])
+        if self.dry_days_now < warn:
+            return None
+        if self.dry_days_now >= self.veranico.min_days:
+            return f"Veranico em curso: {self.dry_days_now} dias seguidos sem chuva."
+        return f"Atenção: {self.dry_days_now} dias seguidos sem chuva."
 
     @property
     def motor_delay_days(self) -> int:
@@ -120,7 +136,13 @@ def build_rain_delay_report(
         series.dates, series.precip_mm, criteria, int(cfg["ano_inicio"]), int(cfg["ano_fim"])
     )
     status = assess_season(series.dates, series.precip_mm, as_of, reference, criteria)
-    report = RainDelayReport(location=location, status=status, source=series.source)
+    report = RainDelayReport(
+        location=location,
+        status=status,
+        source=series.source,
+        veranico=VeranicoClimatology.from_config(reference, series.dates, series.precip_mm, criteria),
+        dry_days_now=current_dry_days(series.dates, series.precip_mm, status.data_until, criteria.wet_day_mm),
+    )
 
     ibge = location.ibge_code or getattr(location_map().get(location.location_id), "ibge_code", None)
     if ibge is None:

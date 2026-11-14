@@ -48,6 +48,15 @@ ou se ainda falta conferir.
 | **Por quê** | Descartar os anos secos faria a chuva parecer mais pontual. Em Petrolina, descartá-los daria normal em 04/jan; mantê-los dá 11/fev. |
 | **Referência formal** | Tratamento padrão de dados censurados à direita. Falta citar uma referência de estatística/climatologia. |
 
+### 1.3b Veranico (sequência seca dentro da estação chuvosa)
+
+| | |
+|---|---|
+| **O que é** | Período de dias seguidos sem chuva (ou com chuva insignificante) no meio da estação chuvosa. |
+| **Definição usada** | Maior sequência de dias com < 1 mm nos 90 dias depois que a chuva firmou (critério de Sivakumar, seção 1.1); veranico se ≥ 10 dias. |
+| **Fonte da definição** | ⚠️ A literatura brasileira usa limiares diferentes (5, 7, 10 ou 15 dias, e "dia seco" < 1 mm, < 2 mm ou < 5 mm). Os nossos valores são de trabalho, `# CONFERIR` em `config/chuva.yaml`. O próprio critério de Sivakumar usa veranico > 7 dias em 30 para validar o início. Falta citar uma referência regional (ex.: estudos de veranico no semiárido nordestino com dados do INMET/FUNCEME). |
+| **Onde no código** | `engine/rain_onset.py` → `build_veranico_climatology`, `current_dry_days`; `engine/monte_carlo.py` (sorteio do tamanho); `analytics/rain_delay.py` (aviso). |
+
 ### 1.4 Interpretação de análise de solo: Alvarez V. et al. (1999), 5ª Aproximação
 
 | | |

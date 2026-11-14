@@ -24,3 +24,10 @@ nasa_power:
 
 # Limite de atraso repassado ao motor Monte Carlo (SimulationConfig aceita 0-45).
 atraso_max_motor_dias: 45
+
+# Veranico: dias seguidos sem chuva (dia seco < dia_chuvoso_mm) DEPOIS que a chuva firmou.
+# A definição varia na literatura (5, 7, 10 ou 15 dias); ver docs/referencias.md.
+veranico:
+  dias_minimos: 10              # CONFERIR: a partir de quantos dias secos seguidos conta como veranico
+  janela_apos_inicio_dias: 90   # CONFERIR: período da lavoura depois da chuva firmar
+  aviso_dias_secos: 5           # na safra em curso, avisar a partir de N dias sem chuva

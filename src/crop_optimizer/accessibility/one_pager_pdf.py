@@ -7,6 +7,7 @@ from datetime import date
 import polars as pl
 from fpdf import FPDF
 
+from crop_optimizer.analytics.views import loss_risk_label
 from crop_optimizer.domain.models import (
     LocationSpec,
     SimulationConfig,
@@ -72,8 +73,9 @@ def generate_one_pager_pdf(
         190,
         6,
         _latin1_safe(
-            f"Municipio: {location.name}-{location.state} ({location.biome}) | "
-            f"Agricultor: {config.farmer_name} | Data: {ref_day.isoformat()}"
+            f"Municipio: {location.name}-{location.state} | "
+            + (f"Agricultor: {config.farmer_name} | " if config.farmer_name else "")
+            + f"Horizonte: {config.horizon_years} ano(s) | Data: {ref_day.isoformat()}"
         ),
     )
 
@@ -105,7 +107,8 @@ def generate_one_pager_pdf(
     pdf.set_fill_color(241, 245, 249)
     pdf.set_font("Helvetica", "B", 8.5)
     col_widths = [58, 28, 30, 26, 26, 22]
-    headers = ["Rotacao", "Sobrevive/10", "2 Anos Perda", "Comida (kg/ha)", "Forragem (kg)", "VPL (R$/ha)"]
+    risk_header = "2 Anos Perda" if config.horizon_years >= 2 else "Perda no ano"
+    headers = ["Rotacao", "Sobrevive/10", risk_header, "Comida (kg/ha)", "Forragem (kg)", "VPL (R$/ha)"]
     for w, h in zip(col_widths, headers, strict=True):
         pdf.cell(w, 7, _latin1_safe(h), border=1, fill=True, align="C")
     pdf.ln()
@@ -142,7 +145,7 @@ def generate_one_pager_pdf(
         5,
         _latin1_safe(
             f"- Melhor escudo ({best.strategy.short_name or best.strategy.name}): "
-            f"risco de 2 anos seguidos de perda total cai de {worst.prob_two_consecutive_losses*100:.1f}% "
+            f"{loss_risk_label(config.horizon_years)} cai de {worst.prob_two_consecutive_losses*100:.1f}% "
             f"para {best.prob_two_consecutive_losses*100:.1f}%; "
             f"score final do solo {best.final_soil_score_mean:.2f}/4.0 e economia de R$ {best.total_fertilizer_savings_mean:,.0f}/ha."
         ).replace(",", "."),

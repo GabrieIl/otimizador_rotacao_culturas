@@ -141,13 +141,15 @@ def plot_nutrient_dynamics(
     return fig
 
 
-def plot_pareto_frontier(df_pareto: pl.DataFrame, risk_col: str = "prob_two_consecutive_losses_pct") -> go.Figure:
+def plot_pareto_frontier(
+    df_pareto: pl.DataFrame, risk_col: str = "prob_two_consecutive_losses_pct", horizon_years: int = 5
+) -> go.Figure:
     """Gráfico técnico: Risco de 2 Anos Seguidos de Perda vs Produção/VPL."""
     pdf = df_pareto.to_pandas()
     y_col = "expected_food_kg_ha_year" if risk_col == "prob_two_consecutive_losses_pct" else "expected_npv_brl_ha"
     y_title = "Comida Esperada (kg grão/ha·ano)" if y_col == "expected_food_kg_ha_year" else "VPL Esperado (R$/ha)"
     x_title = (
-        "Probabilidade de 2 Anos Seguidos de Perda Total (%)"
+        ("Probabilidade de 2 Anos Seguidos de Perda Total (%)" if horizon_years >= 2 else "Probabilidade de Perder a Safra no Ano (%)")
         if risk_col == "prob_two_consecutive_losses_pct"
         else "Risco Financeiro — Desvio Padrão (R$/ha)"
     )

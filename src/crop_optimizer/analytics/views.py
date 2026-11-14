@@ -16,6 +16,11 @@ from crop_optimizer.engine.monte_carlo import _delay_and_veranico_penalty
 from crop_optimizer.lakehouse.catalog import SeasonalClimateStats
 
 
+def loss_risk_label(horizon_years: int) -> str:
+    """Rótulo do risco que o motor calcula: 2 anos seguidos de perda; com 1 ano, perder a safra."""
+    return "risco de 2 anos seguidos de perda" if horizon_years >= 2 else "risco de perder a safra no ano"
+
+
 def classify_traffic_light(failure_prob_pct: float) -> TrafficLightLevel:
     """Converte probabilidade de quebra em Semáforo Agrícola (Verde / Amarelo / Vermelho)."""
     if failure_prob_pct < 25.0:

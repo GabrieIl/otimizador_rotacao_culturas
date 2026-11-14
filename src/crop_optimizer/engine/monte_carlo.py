@@ -86,12 +86,14 @@ class MonteCarloRotationEngine:
             )
             annual_enso[:, yr] = cur_enso
 
-        # Ocorrência estocástica de veranico em cada ano (somado ao veranico simulado pelo usuário)
-        veranico_annual_days = np.where(
-            rng.random((n_scen, horizon)) < climate_stats.veranico_prob,
-            rng.integers(8, 19, size=(n_scen, horizon)),
-            0,
-        )
+        # Ocorrência estocástica de veranico em cada ano. Com histórico real, o tamanho é sorteado
+        # entre os veranicos observados no local; sem ele, entre 8 e 18 dias.
+        has_veranico = rng.random((n_scen, horizon)) < climate_stats.veranico_prob
+        if climate_stats.veranico_lengths:
+            lengths = rng.choice(np.asarray(climate_stats.veranico_lengths), size=(n_scen, horizon))
+        else:
+            lengths = rng.integers(8, 19, size=(n_scen, horizon))
+        veranico_annual_days = np.where(has_veranico, lengths, 0)
 
         # 2. Estresse hídrico vetorizado por safra/cultura
         climate_stress = np.zeros((n_scen, n_steps), dtype=np.float64)

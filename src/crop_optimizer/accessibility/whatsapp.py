@@ -36,8 +36,8 @@ def build_whatsapp_summary_message(
     """Formata mensagem curta, visual (ícones) e acessível para WhatsApp."""
     return (
         f"🌾 *Conselheiro do Sertão — {location.name}/{location.state}*\n"
-        f"Olá, *{farmer_name}*!\n\n"
-        f"*Semáforo da Chuva ({delay_days}d de atraso):*\n"
+        + (f"Olá, *{farmer_name}*!\n\n" if farmer_name else "Olá!\n\n")
+        + f"*Semáforo da Chuva ({delay_days}d de atraso):*\n"
         f"{traffic_light.emoji} *{traffic_light.guidance}*\n\n"
         f"*Placar em 10 anos:*\n"
         f"• {traditional_result.strategy.short_name}: perde a roça em *{traditional_result.loss_years_of_10} de 10* anos\n"
