@@ -31,17 +31,30 @@
   - zoom de **4** (Brasil inteiro) a **17** (último nível com imagem);
   - mapa preso à caixa do Brasil (`maxBounds` com viscosidade 1), sem repetir o planeta (`noWrap`,
     `worldCopyJump: false`).
-- **Zoom e centro guardados na sessão:** trocar a lente, o ano, o mês ou a página mantém a visão. Mudar o
-  ponto (clique, coordenada ou exemplo) recentraliza e mantém o zoom.
-  - Zoom e centro são passados ao `st_folium` como parâmetros dinâmicos, sem recarregar o mapa.
-  - Só são guardados quando a resposta vem do mapa desenhado. Antes disso o `st_folium` devolve o zoom
-    inicial da figura, que sobrescreveria o zoom guardado.
+- **Zoom e posição estáveis** (segunda versão, depois de a primeira deixar o mapa "indo e voltando"):
+  - **Causa do vaivém:** a primeira versão devolvia ao mapa, a cada execução, o centro e o zoom que ele
+    tinha acabado de informar. O componente `streamlit-folium` chama `setView` sempre que esses valores
+    mudam, então o mapa era puxado para uma posição um pouco antiga enquanto o usuário ainda arrastava ou
+    dava zoom.
+  - **Como funciona agora:**
+    - A figura do mapa (só a imagem de base e os limites) fica **fixa durante a visita à página**. Se a
+      figura muda, o componente recria o mapa e perde o zoom.
+    - Lente, quadrado do pixel e marcador vão pelo `feature_group_to_add`, que o componente troca **sem
+      recriar** o mapa. Trocar lente, ano ou mês não mexe na visão.
+    - O app só envia um centro ao mapa quando o **ponto muda** pelos campos de coordenada ou por um exemplo:
+      recentraliza e mantém o zoom. Ponto escolhido por **clique** não recentraliza. O zoom **nunca** é
+      enviado.
+    - O zoom e o centro informados pelo mapa são guardados só para **reabrir na mesma visão** quando o usuário
+      volta à página. Se o ponto mudou em outra página, abre no ponto novo com o mesmo zoom.
+    - Cada página chama `arrived()` (em `app/state.py`) para o app saber quando o usuário chegou de outra
+      página.
 - O campo `zoom` de cada lente foi removido de `config/lentes.yaml`.
 
 ## Testes
 
 `tests/test_estado_paginas.py`: valor de widget sobrevive à troca de página; mudança feita em outra página
-vale na volta; limites de zoom e caixa do Brasil no mapa gerado.
+vale na volta; limites de zoom e caixa do Brasil no mapa gerado; a visão do usuário nunca é devolvida ao
+mapa durante a visita (só centro quando o ponto muda, e não por clique).
 
 O fluxo Início → Plantio → Satélite → Início também foi verificado com um app de teste que só desenha uma
 página por vez: o município, a lente, o ano, o mês, o horizonte, a data e o zoom se mantiveram. **O mapa

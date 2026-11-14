@@ -28,6 +28,7 @@ from crop_optimizer.app.common import (
     rain_series,
     soil_profile,
 )
+from crop_optimizer.app.state import arrived
 from crop_optimizer.config import load_yaml_config
 from crop_optimizer.domain.soil_profile import (
     ATTRIBUTES,
@@ -144,6 +145,7 @@ def _field_form(location_id: str, profile: SoilProfile) -> None:
 
 
 def home_page() -> None:
+    arrived("inicio")
     st.title("Perfil do local")
     location, roca = current_location()
 

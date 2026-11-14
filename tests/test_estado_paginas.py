@@ -59,10 +59,49 @@ def test_map_zoom_limits_and_bounds() -> None:
     cfg = load_yaml_config("lentes")["mapa"]
     # acima de 17 a imagem de base não existe no semiárido; abaixo de 4 o mundo se repete
     assert (cfg["zoom_minimo"], cfg["zoom_maximo"]) == (4, 17)
-    html = _build_map(None, -9.05, -40.9, True).get_root().render()
+    html = _build_map((-9.05, -40.9), 25).get_root().render()
+    assert '"zoom": 17' in html  # zoom pedido acima do limite é cortado
     assert '"minZoom": 4' in html and '"maxZoom": 17' in html
     assert '"maxBoundsViscosity": 1.0' in html and '"noWrap": true' in html
     block = html[html.index('"maxBounds"') : html.index('"zoom"', html.index('"maxBounds"'))]
     south, west, north, east = (float(x) for x in re.findall(r"-?\d+\.\d+", block))
     box = cfg["limites"]
     assert (south, west, north, east) == (box["sul"], box["oeste"], box["norte"], box["leste"])
+
+
+_VIEW_APP = textwrap.dedent(
+    """
+    import streamlit as st
+    from crop_optimizer.app.satellite_page import _map_view
+    p = st.session_state.get("_teste_ponto", (-9.0, -40.0))
+    _map_view(p[0], p[1], st.session_state.pop("_teste_chegou", False))
+    """
+)
+
+
+def test_map_view_never_feeds_back_user_view(tmp_path) -> None:
+    """O mapa só recebe centro quando o ponto muda; a visão do usuário só vale ao voltar à página."""
+    path = tmp_path / "view.py"
+    path.write_text(_VIEW_APP, encoding="utf-8")
+    at = AppTest.from_file(str(path), default_timeout=30)
+    ss = at.session_state
+    ss["_teste_chegou"] = True
+    at.run()
+    assert ss["_mapa_ancora"] == ((-9.0, -40.0), 9) and ss["_mapa_pedido"] is None
+    # usuário mexeu no mapa: nada é devolvido ao mapa nesta visita
+    ss["_mapa_zoom"], ss["_mapa_centro"] = 13, (-9.3, -40.2)
+    at.run()
+    assert ss["_mapa_ancora"] == ((-9.0, -40.0), 9) and ss["_mapa_pedido"] is None
+    # ponto novo pelos campos: centraliza nele, sem mexer na figura
+    ss["_teste_ponto"] = (-6.0, -38.0)
+    at.run()
+    assert ss["_mapa_pedido"] == [-6.0, -38.0] and ss["_mapa_ancora"][1] == 9
+    # ponto novo por clique: não recentraliza
+    ss["_teste_ponto"] = ss["_mapa_ponto_clicado"] = (-6.1, -38.1)
+    at.run()
+    assert ss["_mapa_pedido"] == [-6.0, -38.0]
+    # volta à página com o mesmo ponto: reabre na última visão do usuário
+    ss["_mapa_zoom"], ss["_mapa_centro"] = 12, (-6.2, -38.3)
+    ss["_teste_chegou"] = True
+    at.run()
+    assert ss["_mapa_ancora"] == ((-6.2, -38.3), 12) and ss["_mapa_pedido"] is None

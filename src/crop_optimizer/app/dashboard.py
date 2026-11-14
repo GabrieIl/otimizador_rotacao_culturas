@@ -47,7 +47,7 @@ from crop_optimizer.app.common import lakehouse_catalog as _get_lakehouse_catalo
 from crop_optimizer.app.common import rain_delay_report as _rain_delay_report
 from crop_optimizer.app.home_page import home_page
 from crop_optimizer.app.satellite_page import satellite_page
-from crop_optimizer.app.state import clear_roca, keep, watch
+from crop_optimizer.app.state import arrived, clear_roca, keep, watch
 from crop_optimizer.config import get_settings
 from crop_optimizer.domain.models import (
     BalancePriority,
@@ -200,6 +200,7 @@ def _run_cached_simulation(
 
 
 def plantio_page() -> None:
+    arrived("plantio")
     st.title("Motor Estocástico de Resiliência do Sertão")
     st.caption(
         "Conselheiro de Bolso para o Semiárido · NASA CHIRPS/SMAP + ZARC Embrapa em DuckDB/Parquet · "

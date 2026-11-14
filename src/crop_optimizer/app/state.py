@@ -61,3 +61,13 @@ def store(key: str, value: Any) -> None:
     não deixa alterar. O `keep` da próxima execução aplica o valor.
     """
     st.session_state[_STORE + key] = value
+
+
+def arrived(page: str) -> bool:
+    """True na primeira execução de `page` depois de vir de outra página (ou ao abrir o app).
+
+    Cada página chama no início. Reexecuções da mesma página (clique, filtro) devolvem False.
+    """
+    previous = st.session_state.get("_pagina_anterior")
+    st.session_state["_pagina_anterior"] = page
+    return previous != page

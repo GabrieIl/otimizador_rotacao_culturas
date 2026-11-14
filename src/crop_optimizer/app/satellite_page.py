@@ -17,7 +17,7 @@ from crop_optimizer.analytics.satellite_lenses import (
     pixel_label,
 )
 from crop_optimizer.app.common import current_location, select_example
-from crop_optimizer.app.state import get_roca, keep, set_roca, store, watch
+from crop_optimizer.app.state import arrived, get_roca, keep, set_roca, store, watch
 from crop_optimizer.config import load_yaml_config
 from crop_optimizer.domain.models import LocationSpec
 from crop_optimizer.domain.presets import DEFAULT_LOCATIONS
@@ -30,8 +30,14 @@ _BASE_TILES = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imager
 _BASE_ATTR = "Imagem de base: Esri, Maxar, Earthstar Geographics"
 _ROCA_COLOR = "#F2B01E"
 _PENDING = "_ponto_pendente"
-# estado do mapa (chaves comuns de sessão: valem entre páginas)
-_ZOOM, _CENTER, _CENTER_POINT = "_mapa_zoom", "_mapa_centro", "_mapa_ponto"
+# Estado do mapa (chaves comuns de sessão: valem entre páginas).
+# _ZOOM/_CENTER: última visão informada pelo mapa. _ANCHOR: visão com que a figura é criada nesta
+# visita (fixa durante a visita, para o mapa não ser recriado). _REQUEST: centro pedido ao mapa
+# quando o ponto muda (None = não mexer). _POINT: ponto que o mapa mostra.
+_ZOOM, _CENTER, _ANCHOR, _REQUEST, _POINT = (
+    "_mapa_zoom", "_mapa_centro", "_mapa_ancora", "_mapa_pedido", "_mapa_ponto"
+)
+_CLICKED = "_mapa_ponto_clicado"
 
 
 def _map_cfg() -> dict:
@@ -113,14 +119,15 @@ def _location_picker(roca: Roca | None, current: LocationSpec) -> None:
         )
 
 
-def _build_map(view: LensView | None, lat: float, lon: float, is_roca: bool) -> folium.Map:
+def _build_map(center: tuple[float, float], zoom: int) -> folium.Map:
+    """Só a imagem de base e os limites. Fica igual durante a visita à página: se a figura muda, o
+    componente recria o mapa e perde o zoom do usuário."""
     cfg = _map_cfg()
     box = cfg["limites"]
     zmin, zmax = int(cfg["zoom_minimo"]), int(cfg["zoom_maximo"])
-    # zoom e centro de verdade vêm do st_folium (dinâmicos); o zoom_start fixo evita recarregar o mapa
     fmap = folium.Map(
-        location=[lat, lon],
-        zoom_start=int(cfg["zoom_inicial"]),
+        location=list(center),
+        zoom_start=int(min(max(zoom, zmin), zmax)),
         tiles=None,
         control_scale=True,
         min_zoom=zmin,
@@ -136,18 +143,25 @@ def _build_map(view: LensView | None, lat: float, lon: float, is_roca: bool) -> 
     folium.TileLayer(
         _BASE_TILES, attr=_BASE_ATTR, name="Imagem de base", min_zoom=zmin, max_zoom=zmax, no_wrap=True
     ).add_to(fmap)
+    return fmap
+
+
+def _dynamic_layers(view: LensView | None, lat: float, lon: float, is_roca: bool) -> folium.FeatureGroup:
+    """Lente, quadrado do pixel e marcador: trocados sem recriar o mapa (zoom e posição ficam)."""
+    cfg = _map_cfg()
+    zmin, zmax = int(cfg["zoom_minimo"]), int(cfg["zoom_maximo"])
+    group = folium.FeatureGroup(name="camadas")
     if view is not None and view.tile_url:
         folium.TileLayer(
             view.tile_url,
             attr=f"NASA GIBS · {view.lens['fonte']}",
             name=view.lens["nome"],
-            overlay=True,
             opacity=0.75,
             max_native_zoom=min(view.layer.max_native_zoom, zmax),
             min_zoom=zmin,
             max_zoom=zmax,
             no_wrap=True,
-        ).add_to(fmap)
+        ).add_to(group)
     if view is not None:
         folium.Rectangle(
             bounds=pixel_bounds(lat, lon, float(view.lens["pixel_km"])),
@@ -156,7 +170,7 @@ def _build_map(view: LensView | None, lat: float, lon: float, is_roca: bool) -> 
             dash_array="6 6",
             fill=False,
             tooltip=f"Tamanho de um quadrado desta lente ({pixel_label(float(view.lens['pixel_km']))})",
-        ).add_to(fmap)
+        ).add_to(group)
     folium.CircleMarker(
         [lat, lon],
         radius=7,
@@ -166,8 +180,26 @@ def _build_map(view: LensView | None, lat: float, lon: float, is_roca: bool) -> 
         fill_color=_ROCA_COLOR,
         fill_opacity=1,
         tooltip="Sua roça" if is_roca else "Ponto ainda não confirmado",
-    ).add_to(fmap)
-    return fmap
+    ).add_to(group)
+    return group
+
+
+def _map_view(lat: float, lon: float, first_run: bool) -> None:
+    """Decide a visão do mapa sem nunca devolver a ele a posição que ele mesmo informou."""
+    point = (lat, lon)
+    zoom0 = int(_map_cfg()["zoom_inicial"])
+    if first_run or _ANCHOR not in st.session_state:
+        # ao chegar na página: volta à última visão, se o ponto não mudou em outra página
+        same_point = st.session_state.get(_POINT) == point and _CENTER in st.session_state
+        center = st.session_state[_CENTER] if same_point else point
+        st.session_state[_ANCHOR] = (tuple(center), st.session_state.get(_ZOOM, zoom0))
+        st.session_state[_REQUEST] = None
+        st.session_state[_POINT] = point
+    elif st.session_state.get(_POINT) != point:
+        st.session_state[_POINT] = point
+        # ponto novo pelos campos ou exemplo: centraliza nele (o zoom fica); por clique, não mexe
+        if st.session_state.get(_CLICKED) != point:
+            st.session_state[_REQUEST] = list(point)
 
 
 def _info_column(view: LensView | None, rain: RainSeries | None, place_label: str) -> None:
@@ -212,6 +244,7 @@ def satellite_page() -> None:
 
     cfg = load_yaml_config("lentes")
     lenses = {lens["id"]: lens for lens in cfg["lentes"]}
+    first_run = arrived("satelite")
     roca = get_roca()
     current, _ = current_location()
     _location_picker(roca, current)
@@ -263,36 +296,30 @@ def satellite_page() -> None:
                 view = build_lens_view(lens, layer, wanted)
                 {"sem_dado": st.warning, "mais_recente": st.info}.get(view.state, st.caption)(view.status_text)
 
-        # Zoom e centro guardados: trocar lente, ano ou página não mexe na visão do mapa. Mudar o
-        # ponto (clique, coordenada ou exemplo) recentraliza, mantendo o zoom.
-        mcfg = _map_cfg()
-        st.session_state.setdefault(_ZOOM, int(mcfg["zoom_inicial"]))
-        if st.session_state.get(_CENTER_POINT) != (lat, lon):
-            st.session_state[_CENTER_POINT] = (lat, lon)
-            st.session_state[_CENTER] = (lat, lon)
+        _map_view(lat, lon, first_run)
+        anchor_center, anchor_zoom = st.session_state[_ANCHOR]
         with map_slot:
             out = st_folium(
-                _build_map(view, lat, lon, is_roca),
+                _build_map(anchor_center, anchor_zoom),
+                feature_group_to_add=_dynamic_layers(view, lat, lon, is_roca),
+                center=st.session_state[_REQUEST],
                 height=520,
                 use_container_width=True,
-                zoom=st.session_state[_ZOOM],
-                center=st.session_state[_CENTER],
                 returned_objects=["last_clicked", "zoom", "center"],
                 key="mapa_lentes",
             )
         out = out or {}
-        # Antes do mapa ser desenhado no navegador, o st_folium devolve só o zoom inicial da figura
-        # (sem "center"). Só guardamos zoom e centro quando a resposta vem do mapa de verdade.
+        # Guarda a visão só para reabrir igual ao voltar à página. NUNCA devolve ao mapa nesta
+        # visita: isso fazia o mapa voltar para trás enquanto o usuário arrastava ou dava zoom.
         if out.get("center") and out.get("zoom"):
-            st.session_state[_ZOOM] = int(
-                min(max(out["zoom"], int(mcfg["zoom_minimo"])), int(mcfg["zoom_maximo"]))
-            )
+            st.session_state[_ZOOM] = int(out["zoom"])
             st.session_state[_CENTER] = (out["center"]["lat"], out["center"]["lng"])
         click = out.get("last_clicked")
         if click:
             point = (round(click["lat"], 5), round(click["lng"], 5))
             if point != st.session_state.get("_ultimo_clique"):
                 st.session_state["_ultimo_clique"] = point
+                st.session_state[_CLICKED] = point
                 st.session_state[_PENDING] = point
                 st.rerun()
 
