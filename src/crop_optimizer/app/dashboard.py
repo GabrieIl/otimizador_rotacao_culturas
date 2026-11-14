@@ -24,10 +24,15 @@ from crop_optimizer.analytics import (
 )
 from crop_optimizer.analytics.rain_delay import (
     RainDelayReport,
-    build_rain_delay_report,
     describe_status,
     fmt_date,
 )
+from crop_optimizer.analytics.soil_suitability import (
+    available_nitrogen_kg_ha,
+    evaluate,
+    initial_markov_state,
+)
+from crop_optimizer.app import navigation
 from crop_optimizer.app.charts import (
     plot_balance_scale_bars,
     plot_nutrient_dynamics,
@@ -35,18 +40,20 @@ from crop_optimizer.app.charts import (
     plot_planting_window_heatmap,
     plot_survival_scoreboard,
 )
+from crop_optimizer.app.common import example_selector, soil_profile
+from crop_optimizer.app.common import lakehouse_catalog as _get_lakehouse_catalog
+from crop_optimizer.app.common import rain_delay_report as _rain_delay_report
+from crop_optimizer.app.home_page import home_page
 from crop_optimizer.app.satellite_page import satellite_page
 from crop_optimizer.app.state import clear_roca, get_roca
 from crop_optimizer.config import get_settings
 from crop_optimizer.domain.models import (
     BalancePriority,
-    LocationSpec,
     SimulationConfig,
     SoilHealthState,
 )
 from crop_optimizer.domain.presets import DEFAULT_STRATEGIES
 from crop_optimizer.domain.roca import nearest_preset
-from crop_optimizer.elt.pipeline import CropLakehouseEltPipeline
 from crop_optimizer.engine import (
     MonteCarloRotationEngine,
     compute_pareto_frontier,
@@ -55,7 +62,6 @@ from crop_optimizer.engine import (
 )
 from crop_optimizer.engine.rain_onset import OnsetCriteria
 from crop_optimizer.ingestion.rain_history import RainDataUnavailable
-from crop_optimizer.lakehouse.catalog import LakehouseCatalog
 
 DELAY_GRID = [0, 7, 14, 21, 28, 35]
 _CROP_LABELS = {
@@ -64,20 +70,6 @@ _CROP_LABELS = {
     "sorgo_forrageiro": "Sorgo forrageiro",
 }
 _WINDOW_ICONS = {"sem_indicacao": "⛔", "ainda_nao_abriu": "⏳", "aberta": "✅", "fechou": "🚫"}
-
-
-@st.cache_resource
-def _get_lakehouse_catalog() -> LakehouseCatalog:
-    settings = get_settings()
-    catalog = LakehouseCatalog(settings)
-    if not catalog.is_ready():
-        CropLakehouseEltPipeline(settings).run()
-    return catalog
-
-
-@st.cache_data(show_spinner="Calculando a chuva da safra (NASA POWER + ZARC)...")
-def _rain_delay_report(location_json: str, as_of: date) -> RainDelayReport:
-    return build_rain_delay_report(LocationSpec.model_validate_json(location_json), as_of)
 
 
 def _render_rain_section(report: RainDelayReport) -> None:
@@ -131,6 +123,9 @@ def _run_cached_simulation(
     safra_delay_days: int,
     veranico_days: int,
     farmer_name: str,
+    initial_om_pct: float = 2.2,
+    initial_n_kg_ha: float = 55.0,
+    soil_factors: tuple[tuple[str, float], ...] = (),
 ):
     catalog = _get_lakehouse_catalog()
     climate_stats = catalog.get_seasonal_climate_stats(location_id)
@@ -144,6 +139,9 @@ def _run_cached_simulation(
         horizon_years=horizon_years,
         n_scenarios=n_scenarios,
         initial_soil_state=SoilHealthState(initial_soil_val),
+        initial_organic_matter_pct=initial_om_pct,
+        initial_nitrogen_kg_ha=initial_n_kg_ha,
+        soil_crop_factors=dict(soil_factors),
         safra_delay_days=safra_delay_days,
         veranico_days=veranico_days,
         farmer_name=farmer_name,
@@ -186,7 +184,6 @@ def plantio_page() -> None:
 
     catalog = _get_lakehouse_catalog()
     locations = catalog.load_locations()
-    loc_options = {f"{loc.name} - {loc.state} ({loc.biome})": loc.location_id for loc in locations}
     locations_by_id = {loc.location_id: loc for loc in locations}
     roca = get_roca()
 
@@ -202,12 +199,11 @@ def plantio_page() -> None:
             if st.button("Usar os municípios de exemplo"):
                 clear_roca()
                 st.rerun()
-            st.page_link(SATELLITE_PAGE, label="Trocar a roça no mapa", icon="🛰️")
+            navigation.link("satelite", "Trocar a roça no mapa", "🛰️")
         else:
-            selected_loc_label = st.selectbox("Município de exemplo", list(loc_options.keys()))
-            location_id = loc_options[selected_loc_label]
+            location_id = example_selector().location_id
             rain_location = locations_by_id[location_id]
-            st.page_link(SATELLITE_PAGE, label="Marcar a minha roça no mapa", icon="🛰️")
+            navigation.link("satelite", "Marcar a minha roça no mapa", "🛰️")
 
         as_of = st.date_input(
             "Data de hoje",
@@ -224,9 +220,12 @@ def plantio_page() -> None:
             value=10_000,
         )
 
-        soil_options = {s.label: s.value for s in SoilHealthState}
-        soil_label = st.selectbox("Condição Atual do Solo", list(soil_options.keys()), index=2)
-        initial_soil_val = soil_options[soil_label]
+        # O solo vem do perfil do local (Início): mapa SoilGrids/SRTM ou análise de campo.
+        profile = soil_profile(rain_location)
+        suitability = evaluate(profile)
+        st.markdown("**Solo da roça por cultura**")
+        st.caption(" · ".join(f"{c.icon} {c.name}" for c in suitability))
+        navigation.link("inicio", "Ver o perfil do solo e ajustar com análise", "🧱")
 
     try:
         rain_report = _rain_delay_report(rain_location.model_dump_json(), as_of)
@@ -262,10 +261,13 @@ def plantio_page() -> None:
         location_id=location_id,
         horizon_years=horizon_years,
         n_scenarios=n_scenarios,
-        initial_soil_val=initial_soil_val,
+        initial_soil_val=int(initial_markov_state(profile.get("mo_pct"))),
         safra_delay_days=safra_delay_days,
         veranico_days=veranico_days,
         farmer_name=farmer_name,
+        initial_om_pct=round(profile.get("mo_pct"), 2),
+        initial_n_kg_ha=round(available_nitrogen_kg_ha(profile), 1),
+        soil_factors=tuple(sorted((c.crop_id, round(c.yield_factor, 3)) for c in suitability)),
     )
 
     by_id = {r.strategy.strategy_id: r for r in results}
@@ -412,8 +414,13 @@ def plantio_page() -> None:
         st.dataframe(df_climate_annual.to_pandas(), width="stretch", hide_index=True)
 
 
-SATELLITE_PAGE = st.Page(satellite_page, title="Satélite", icon="🛰️", url_path="satelite")
-PLANTIO_PAGE = st.Page(plantio_page, title="Plantio", icon="🌱", url_path="plantio", default=True)
+HOME_PAGE = navigation.register(
+    "inicio", st.Page(home_page, title="Início", icon="🏡", url_path="inicio", default=True)
+)
+PLANTIO_PAGE = navigation.register("plantio", st.Page(plantio_page, title="Plantio", icon="🌱", url_path="plantio"))
+SATELLITE_PAGE = navigation.register(
+    "satelite", st.Page(satellite_page, title="Satélite", icon="🛰️", url_path="satelite")
+)
 
 
 def main() -> None:
@@ -422,7 +429,7 @@ def main() -> None:
         page_icon="🌾",
         layout="wide",
     )
-    st.navigation([PLANTIO_PAGE, SATELLITE_PAGE], position="top").run()
+    st.navigation([HOME_PAGE, PLANTIO_PAGE, SATELLITE_PAGE], position="top").run()
 
 
 if __name__ == "__main__":
