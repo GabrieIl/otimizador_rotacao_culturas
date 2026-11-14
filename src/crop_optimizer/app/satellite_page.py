@@ -16,6 +16,7 @@ from crop_optimizer.analytics.satellite_lenses import (
     pixel_bounds,
     pixel_label,
 )
+from crop_optimizer.app import theme
 from crop_optimizer.app.common import current_location, select_example
 from crop_optimizer.app.state import arrived, get_roca, keep, set_roca, store, watch
 from crop_optimizer.config import load_yaml_config
@@ -28,7 +29,7 @@ from crop_optimizer.ingestion.rain_history import RainDataUnavailable, RainSerie
 
 _BASE_TILES = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
 _BASE_ATTR = "Imagem de base: Esri, Maxar, Earthstar Geographics"
-_ROCA_COLOR = "#F2B01E"
+_ROCA_COLOR = theme.COLORS.terracota_ilustracao
 _PENDING = "_ponto_pendente"
 # Estado do mapa (chaves comuns de sessão: valem entre páginas).
 # _ZOOM/_CENTER: última visão informada pelo mapa. _ANCHOR: visão com que a figura é criada nesta
@@ -165,7 +166,7 @@ def _dynamic_layers(view: LensView | None, lat: float, lon: float, is_roca: bool
     if view is not None:
         folium.Rectangle(
             bounds=pixel_bounds(lat, lon, float(view.lens["pixel_km"])),
-            color=_ROCA_COLOR,
+            color=theme.COLORS.ocre,  # o "pixel" da marca é literalmente um pixel aqui
             weight=2,
             dash_array="6 6",
             fill=False,
@@ -174,7 +175,7 @@ def _dynamic_layers(view: LensView | None, lat: float, lon: float, is_roca: bool
     folium.CircleMarker(
         [lat, lon],
         radius=7,
-        color="#0F2430",
+        color=theme.COLORS.petroleo,
         weight=2,
         fill=True,
         fill_color=_ROCA_COLOR,
@@ -207,12 +208,12 @@ def _info_column(view: LensView | None, rain: RainSeries | None, place_label: st
     if view is not None:
         lens = view.lens
         with st.container(border=True):
-            st.caption("ESTA LENTE")
+            theme.label("Esta lente")
             st.markdown(f"### {lens['nome']}")
             st.write(lens["descricao"])
             st.caption(f"Fonte: {lens['fonte']} · cada imagem junta {lens['periodo']}")
         with st.container(border=True):
-            st.caption("TAMANHO DE CADA QUADRADO")
+            theme.label("Tamanho de cada quadrado")
             st.markdown(f"### {pixel_label(float(lens['pixel_km']))}")
             st.write(lens["pixel_texto"])
         if view.state != "sem_dado":
@@ -228,7 +229,7 @@ def _rain_numbers(view: LensView, rain: RainSeries, place_label: str) -> None:
     m = month_rain(rain, view.wanted.year, view.wanted.month)
     mes = f"{MONTHS_PT[view.wanted.month - 1]}/{view.wanted.year}"
     with st.container(border=True):
-        st.caption(f"CHUVA DO MÊS NO PONTO · {place_label}")
+        theme.label(f"Chuva do mês no ponto · {place_label}")
         if m.total_mm is None:
             st.markdown(f"### {mes}: mês incompleto")
             st.write(f"{m.days_with_data} dias com dado até agora. Em média, o mês tem {m.normal_mm:.0f} mm.")
@@ -239,8 +240,12 @@ def _rain_numbers(view: LensView, rain: RainSeries, place_label: str) -> None:
 
 
 def satellite_page() -> None:
-    st.title("O que o satélite vê na sua roça")
-    st.caption("Troque a lente e arraste o ano para ver cada dado da NASA que o app usa.")
+    theme.page_header(
+        "Satélite · lentes da NASA",
+        "O que o satélite vê na sua roça",
+        "Troque a lente e o ano para ver cada dado que o Acauã usa, e o tamanho do quadrado de cada um.",
+        mascot="mascote_satelite.png",
+    )
 
     cfg = load_yaml_config("lentes")
     lenses = {lens["id"]: lens for lens in cfg["lentes"]}
@@ -335,7 +340,7 @@ def satellite_page() -> None:
         _info_column(view, rain, place_label)
 
     caps = f" Catálogo de imagens de {caps_date:%d/%m/%Y}." if caps_date else ""
-    st.caption(
+    theme.footer(
         "Imagens: NASA GIBS / EOSDIS (GPM IMERG, SMAP, MODIS Terra, SRTM). Chuva do ponto: NASA POWER. "
         f"Imagem de base: Esri World Imagery. Município: © OpenStreetMap contributors (Nominatim) e IBGE.{caps}"
     )

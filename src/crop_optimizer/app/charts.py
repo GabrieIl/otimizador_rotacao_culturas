@@ -1,10 +1,12 @@
-"""Gráficos Plotly reutilizáveis para o Conselheiro do Sertão e Back-office EMATER."""
+"""Gráficos Plotly do Acauã, com as cores e fontes da marca (app/theme.py)."""
 
 from __future__ import annotations
 
 import plotly.express as px
 import plotly.graph_objects as go
 import polars as pl
+
+from crop_optimizer.app.theme import COLORS, plotly_layout
 
 
 def plot_planting_window_heatmap(df_matrix: pl.DataFrame) -> go.Figure:
@@ -20,13 +22,15 @@ def plot_planting_window_heatmap(df_matrix: pl.DataFrame) -> go.Figure:
     pivot_txt = pdf.pivot(index="delay_label", columns="crop_name", values="cell_display").reindex(order)
 
     # Escala discreta alinhada ao Semáforo: <25% Verde, 25-55% Amarelo, >=55% Vermelho
+    # tons claros das cores do semáforo (texto em petróleo legível em todas as células)
+    verde, amarelo, vermelho = "#BFD6C7", "#F1DDB0", "#E6BDB8"
     colorscale = [
-        [0.0, "#16a34a"],
-        [0.249, "#22c55e"],
-        [0.25, "#eab308"],
-        [0.549, "#facc15"],
-        [0.55, "#dc2626"],
-        [1.0, "#991b1b"],
+        [0.0, verde],
+        [0.249, verde],
+        [0.25, amarelo],
+        [0.549, amarelo],
+        [0.55, vermelho],
+        [1.0, vermelho],
     ]
 
     fig = go.Figure(
@@ -36,6 +40,9 @@ def plot_planting_window_heatmap(df_matrix: pl.DataFrame) -> go.Figure:
             y=list(pivot_val.index),
             text=pivot_txt.values,
             texttemplate="%{text}",
+            textfont=dict(color=COLORS.petroleo, size=12),
+            xgap=3,
+            ygap=3,
             colorscale=colorscale,
             zmin=0,
             zmax=100,
@@ -44,13 +51,12 @@ def plot_planting_window_heatmap(df_matrix: pl.DataFrame) -> go.Figure:
         )
     )
     fig.update_layout(
-        title="Semáforo Agrícola — Impacto do Atraso das Chuvas e Veranicos",
-        xaxis_title="Cultura / Opção de Plantio",
-        yaxis_title="Atraso no Início das Águas",
-        height=430,
+        title="Se a chuva atrasar, quanto arrisca cada cultura",
+        xaxis_title="",
+        yaxis_title="Atraso da chuva",
         margin=dict(l=20, r=20, t=55, b=20),
     )
-    return fig
+    return plotly_layout(fig, height=430)
 
 
 def plot_survival_scoreboard(df_scoreboard: pl.DataFrame) -> go.Figure:
@@ -63,7 +69,7 @@ def plot_survival_scoreboard(df_scoreboard: pl.DataFrame) -> go.Figure:
             x=pdf["survival_score_of_10"],
             name="Anos com Lavoura & Rebanho Salvos (em 10)",
             orientation="h",
-            marker_color="#16a34a",
+            marker_color=COLORS.verde,
             text=[f"{v}/10 salvos" for v in pdf["survival_score_of_10"]],
             textposition="inside",
         )
@@ -74,21 +80,20 @@ def plot_survival_scoreboard(df_scoreboard: pl.DataFrame) -> go.Figure:
             x=pdf["loss_years_of_10"],
             name="Anos de Perda Severa (em 10)",
             orientation="h",
-            marker_color="#dc2626",
+            marker_color=COLORS.vermelho,
             text=[f"{v}/10 perda" if v > 0 else "" for v in pdf["loss_years_of_10"]],
             textposition="inside",
         )
     )
     fig.update_layout(
         barmode="stack",
-        title="Placar de Sobrevivência em 10 Anos (Simulação de 10.000 Futuros)",
+        title="Em quantos de cada 10 anos a roça aguenta",
         xaxis=dict(title="Anos em 10", range=[0, 10], dtick=1),
         yaxis_title="",
-        height=340,
         legend=dict(orientation="h", y=-0.22),
         margin=dict(l=20, r=20, t=55, b=20),
     )
-    return fig
+    return plotly_layout(fig, height=340)
 
 
 def plot_balance_scale_bars(df_balance: pl.DataFrame) -> go.Figure:
@@ -103,15 +108,15 @@ def plot_balance_scale_bars(df_balance: pl.DataFrame) -> go.Figure:
         orientation="h",
         text="raw_label",
         color_discrete_map={
-            "Comida (Grão)": "#f59e0b",
-            "Forragem (Rebanho)": "#16a34a",
-            "Escudo (Anti-Colapso)": "#2563eb",
+            "Comida (Grão)": COLORS.ocre,
+            "Forragem (Rebanho)": COLORS.verde,
+            "Escudo (Anti-Colapso)": COLORS.petroleo,
         },
         labels={"score": "Índice da Balança (0 a 100)", "strategy_name": "Rotação", "pillar": "Pilar"},
-        title="Balança: Comida × Forragem do Rebanho × Escudo Climático",
+        title="Comida, forragem e escudo de cada rotação",
     )
-    fig.update_layout(height=400, xaxis=dict(range=[0, 115]), legend=dict(orientation="h", y=-0.22), margin=dict(l=20, r=20, t=55, b=20))
-    return fig
+    fig.update_layout(xaxis=dict(range=[0, 115]), legend=dict(orientation="h", y=-0.22), margin=dict(l=20, r=20, t=55, b=20))
+    return plotly_layout(fig, height=400)
 
 
 def plot_nutrient_dynamics(
@@ -137,8 +142,8 @@ def plot_nutrient_dynamics(
         labels={"step_index": "Ciclo Sazonal", metric: y_label, "strategy_name": "Estratégia"},
         title=title,
     )
-    fig.update_layout(height=410, legend=dict(orientation="h", y=-0.22), margin=dict(l=20, r=20, t=55, b=20))
-    return fig
+    fig.update_layout(legend=dict(orientation="h", y=-0.22), margin=dict(l=20, r=20, t=55, b=20))
+    return plotly_layout(fig, height=410)
 
 
 def plot_pareto_frontier(
@@ -166,7 +171,7 @@ def plot_pareto_frontier(
                 mode="markers+text",
                 text=non_pareto["short_name"],
                 textposition="bottom center",
-                marker=dict(size=13, color="#94a3b8", line=dict(width=1, color="#475569")),
+                marker=dict(size=13, color=COLORS.linha, line=dict(width=1, color=COLORS.texto_suave)),
                 name="Estratégias Dominadas",
             )
         )
@@ -179,17 +184,16 @@ def plot_pareto_frontier(
                 mode="lines+markers+text",
                 text=pareto["short_name"],
                 textposition="top center",
-                line=dict(color="#16a34a", width=2.5, dash="dash"),
-                marker=dict(size=16, color="#15803d", symbol="diamond", line=dict(width=2, color="#ffffff")),
+                line=dict(color=COLORS.terracota, width=2.5, dash="dash"),
+                marker=dict(size=16, color=COLORS.terracota, symbol="square", line=dict(width=2, color="#ffffff")),
                 name="Fronteira Ótima (Pareto)",
             )
         )
 
     fig.update_layout(
-        title="Fronteira Técnica de Resiliência (EMATER / Cooperativas)",
+        title="Fronteira técnica: risco x comida (para o técnico)",
         xaxis_title=x_title,
         yaxis_title=y_title,
-        height=430,
         margin=dict(l=20, r=20, t=55, b=20),
     )
-    return fig
+    return plotly_layout(fig, height=430)

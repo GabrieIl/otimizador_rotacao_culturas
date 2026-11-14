@@ -34,7 +34,7 @@ from crop_optimizer.analytics.soil_suitability import (
     initial_markov_state,
 )
 from crop_optimizer.analytics.views import loss_risk_label
-from crop_optimizer.app import navigation
+from crop_optimizer.app import navigation, theme
 from crop_optimizer.app.charts import (
     plot_balance_scale_bars,
     plot_nutrient_dynamics,
@@ -78,8 +78,8 @@ _CROP_LABELS = {
 
 def _render_rain_section(report: RainDelayReport) -> None:
     s = report.status
-    loc = report.location
-    st.subheader(f"Chuva da safra {s.season_label} em {loc.name}/{loc.state}")
+    theme.label(f"Por quê · chuva da safra {s.season_label}")
+    st.header("A chuva desta safra", anchor=False)
     title, body, level = describe_status(s)
     getattr(st, level)(f"**{title}.** {body}")
 
@@ -201,33 +201,26 @@ def _run_cached_simulation(
 
 def plantio_page() -> None:
     arrived("plantio")
-    st.title("Motor Estocástico de Resiliência do Sertão")
-    st.caption(
-        "Conselheiro de Bolso para o Semiárido · NASA CHIRPS/SMAP + ZARC Embrapa em DuckDB/Parquet · "
-        "10.000 Cenários em NumPy · Rádio do Tempo (TTS) · Ficha EMATER"
-    )
-
     location_now, roca = current_location()
     if roca is not None:
         # a chuva, o ZARC e o solo usam o ponto da roça; o Monte Carlo só tem clima dos exemplos
         nearest, nearest_km = nearest_preset(roca.lat, roca.lon)
         location_id = nearest.location_id
+        subtitle = f"Sua roça: {roca.label}"
     else:
         location_id = location_now.location_id
+        subtitle = f"{location_now.name}/{location_now.state} · município de exemplo"
     rain_location = location_now
 
-    top = st.columns([3, 2])
-    with top[0]:
-        if roca is not None:
-            st.markdown(f"**Sua roça:** {roca.label}")
-        else:
-            st.markdown(f"**Local:** {location_now.name}/{location_now.state} (município de exemplo)")
-    with top[1]:
+    theme.page_header("Plantio", "Posso plantar agora?", subtitle)
+    c_map, c_back, c_date = st.columns([1.2, 1.2, 1.6], vertical_alignment="center")
+    with c_map:
         navigation.link("satelite", "Marcar ou trocar a roça no mapa")
+    with c_back:
         if roca is not None and st.button("Voltar aos municípios de exemplo"):
             clear_roca()
             st.rerun()
-    with st.expander("Simular outra data"):
+    with c_date, st.expander("Simular outra data"):
         keep("data_simulada", date.today())
         as_of = st.date_input(
             "Data",
@@ -246,14 +239,10 @@ def plantio_page() -> None:
     try:
         rain_report = _rain_delay_report(rain_location.model_dump_json(), as_of)
     except RainDataUnavailable as exc:
-        st.error(
-            f"**Não foi possível calcular o atraso da chuva.** {exc} "
-            "A simulação abaixo roda SEM atraso de chuva."
-        )
+        rain_report, rain_error = None, exc
         safra_delay_days = 0
-        rain_report = None
     else:
-        _render_rain_section(rain_report)
+        rain_error = None
         safra_delay_days = rain_report.motor_delay_days
     veranico = rain_report.veranico if rain_report is not None else None
     if veranico is not None and veranico.seasons_with_onset:
@@ -262,16 +251,6 @@ def plantio_page() -> None:
     else:
         veranico_args, typical_veranico = (None, ()), 7
 
-    st.caption("**Solo por cultura:** " + " · ".join(f"{c.name}: {c.label.lower()}" for c in suitability))
-    navigation.link("inicio", "Ver o perfil do solo e ajustar com análise de campo")
-    st.divider()
-    if roca is not None:
-        st.warning(
-            f"**Daqui para baixo, a simulação usa o clima de exemplo de {nearest.name}/{nearest.state}**, "
-            f"o município de exemplo mais perto da sua roça (a {nearest_km:.0f} km). "
-            "Só a chuva e a janela do ZARC acima são do ponto da sua roça."
-        )
-
     df_matrix = _risk_matrix(location_id, safra_delay_days, typical_veranico, *veranico_args)
     corn_row = df_matrix.filter(
         (df_matrix["crop_id"] == "milho_sertanejo") & (df_matrix["delay_days"] == safra_delay_days)
@@ -279,15 +258,36 @@ def plantio_page() -> None:
     corn_risk_pct = float(corn_row["failure_prob_pct"][0]) if corn_row.height > 0 else 50.0
     traffic_light = classify_traffic_light(corn_risk_pct)
 
-    # Banner Semáforo Agrícola no topo
-    if traffic_light.value == "verde":
-        st.success(f"**SEMÁFORO VERDE — {traffic_light.guidance}** (atraso {safra_delay_days}d | risco milho: {corn_risk_pct:.0f}%)")
-    elif traffic_light.value == "amarelo":
-        st.warning(f"**SEMÁFORO AMARELO — {traffic_light.guidance}** (atraso {safra_delay_days}d | risco milho: {corn_risk_pct:.0f}%)")
-    else:
-        st.error(f"**SEMÁFORO VERMELHO — {traffic_light.guidance}** (atraso {safra_delay_days}d | risco milho: {corn_risk_pct:.0f}%)")
+    # 1. A resposta, direta
+    delay_txt = f"{safra_delay_days} dias de atraso da chuva" if safra_delay_days else "sem atraso de chuva"
+    corn_of_10 = round(corn_risk_pct / 10)
+    theme.status_card(
+        traffic_light.value,
+        f"{traffic_light.guidance}. Plantando milho agora, a roça quebra em {corn_of_10} de cada 10 anos.",
+        f"Considerando {delay_txt} e o veranico observado no local.",
+    )
+    if roca is not None:
+        st.caption(
+            f"O risco das culturas usa o clima de exemplo de {nearest.name}/{nearest.state}, o município de "
+            f"exemplo mais perto da sua roça (a {nearest_km:.0f} km). A chuva, o veranico e o ZARC abaixo são do "
+            "ponto da sua roça."
+        )
+    with st.expander("Ver o risco de cada cultura conforme o atraso da chuva"):
+        st.plotly_chart(plot_planting_window_heatmap(df_matrix), width="stretch")
 
-    st.subheader("Rotações")
+    # 2. Por quê: a chuva
+    theme.divider()
+    if rain_report is not None:
+        _render_rain_section(rain_report)
+    else:
+        st.error(f"**Não foi possível calcular o atraso da chuva.** {rain_error} O aviso acima considera chuva sem atraso.")
+    st.caption("**Solo por cultura:** " + " · ".join(f"{c.name}: {c.label.lower()}" for c in suitability))
+    navigation.link("inicio", "Ver o perfil do solo e ajustar com análise de campo")
+
+    # 3. Qual roça aguenta mais?
+    theme.divider()
+    theme.label("Rotações · 10.000 cenários")
+    st.header("Qual roça aguenta mais?", anchor=False)
     keep("horizonte", DEFAULT_HORIZON)
     horizon_years = st.segmented_control(
         "Horizonte da simulação",
@@ -322,25 +322,19 @@ def plantio_page() -> None:
     resilient = rank_by_survival(results)[0]
     risk = loss_risk_label(horizon_years).capitalize()
 
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Só Milho (Perda em 10)", f"{traditional.loss_years_of_10} de 10 anos", delta=f"{risk}: {traditional.prob_two_consecutive_losses*100:.0f}%", delta_color="inverse")
-    c2.metric(resilient.strategy.short_name, f"Sobrevive {resilient.survival_score_of_10} de 10", delta=f"{risk}: {resilient.prob_two_consecutive_losses*100:.0f}%")
-    c3.metric("Forragem Garantida", f"{resilient.expected_forage_kg_ha_year:,.0f} kg/ha·ano".replace(",", "."))
-    c4.metric("Latência Total", f"{sum(r.execution_ms for r in results):.0f} ms", delta=f"DuckDB: {climate_stats.query_ms:.1f} ms")
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Só milho perde a roça em", f"{traditional.loss_years_of_10} de 10 anos", delta=f"{risk}: {traditional.prob_two_consecutive_losses*100:.0f}%", delta_color="off", delta_arrow="off")
+    c2.metric(f"{resilient.strategy.short_name} aguenta", f"{resilient.survival_score_of_10} de 10 anos", delta=f"{risk}: {resilient.prob_two_consecutive_losses*100:.0f}%", delta_color="off", delta_arrow="off")
+    c3.metric("Forragem garantida", f"{resilient.expected_forage_kg_ha_year:,.0f} kg/ha·ano".replace(",", "."))
 
     tab_pocket, tab_radio, tab_emater, tab_lakehouse = st.tabs(
-        [
-            "Conselheiro de Bolso (Semáforo & Balança)",
-            "O Rádio do Tempo (Áudio + WhatsApp)",
-            "Ficha 'O Que Não Sabemos' (EMATER / PDF)",
-            "Lakehouse NASA + ZARC (DuckDB)",
-        ]
+        ["Balança", "Rádio do Tempo", "Ficha para o técnico", "Dados"]
     )
 
     with tab_pocket:
-        st.subheader("Balança: O que pesa mais para a sua família hoje?")
+        st.subheader("O que pesa mais para a sua família hoje?", anchor=False)
         priority_choice = st.radio(
-            "Clique na sua prioridade:",
+            "Prioridade",
             options=[
                 BalancePriority.EQUILIBRADO,
                 BalancePriority.COMIDA,
@@ -348,19 +342,20 @@ def plantio_page() -> None:
                 BalancePriority.ESCUDO,
             ],
             format_func=lambda p: {
-                BalancePriority.EQUILIBRADO: "Equilíbrio Geral",
-                BalancePriority.COMIDA: "Comida na Mesa (Grãos)",
-                BalancePriority.FORRAGEM: "Salvar o Rebanho (Forragem/Palma)",
-                BalancePriority.ESCUDO: "Escudo (Evitar 2 Anos de Perda)" if horizon_years >= 2 else "Escudo (Evitar Perder a Safra)",
+                BalancePriority.EQUILIBRADO: "Equilíbrio",
+                BalancePriority.COMIDA: "Comida na mesa",
+                BalancePriority.FORRAGEM: "Salvar o rebanho",
+                BalancePriority.ESCUDO: "Evitar 2 anos de perda" if horizon_years >= 2 else "Evitar perder a safra",
             }[p],
             horizontal=True,
+            label_visibility="collapsed",
         )
         chosen = select_by_balance_priority(results, priority_choice)
         st.info(
-            f"**Opção recomendada pela Balança:** {chosen.strategy.name} — "
-            f"{chosen.expected_food_kg_ha_year:,.0f} kg/ha·ano de grão | "
-            f"{chosen.expected_forage_kg_ha_year:,.0f} kg/ha·ano de forragem | "
-            f"Sobrevive **{chosen.survival_score_of_10} de 10 anos**.".replace(",", ".")
+            f"**Indicada pela Balança: {chosen.strategy.name}.** "
+            f"{chosen.expected_food_kg_ha_year:,.0f} kg/ha·ano de grão · "
+            f"{chosen.expected_forage_kg_ha_year:,.0f} kg/ha·ano de forragem · "
+            f"aguenta **{chosen.survival_score_of_10} de 10 anos**.".replace(",", ".")
         )
 
         col_l, col_r = st.columns(2)
@@ -369,10 +364,8 @@ def plantio_page() -> None:
         with col_r:
             st.plotly_chart(plot_balance_scale_bars(df_balance), width="stretch")
 
-        st.plotly_chart(plot_planting_window_heatmap(df_matrix), width="stretch")
-
     with tab_radio:
-        st.subheader("O Rádio do Tempo — Resumo Falado para WhatsApp")
+        st.subheader("O resumo falado, para mandar no WhatsApp", anchor=False)
         script = compose_radio_script(
             farmer_name="",
             location=location,
@@ -382,21 +375,21 @@ def plantio_page() -> None:
             resilient_result=resilient,
             horizon_years=horizon_years,
         )
-        st.text_area("Roteiro do Áudio (Linguagem Acessível)", value=script, height=130)
+        st.text_area("Roteiro do áudio", value=script, height=130)
 
         settings = get_settings()
         tts = create_tts_provider(settings.tts_provider, settings.openai_api_key)
         audio_res = tts.synthesize(script)
         st.audio(audio_res.audio_bytes, format=audio_res.mime_type)
         st.download_button(
-            label=f"Baixar Áudio ({audio_res.file_extension.upper()})",
+            label=f"Baixar áudio ({audio_res.file_extension.upper()})",
             data=audio_res.audio_bytes,
             file_name=f"radio_do_tempo_{location.location_id}.{audio_res.file_extension}",
             mime=audio_res.mime_type,
         )
 
-        st.divider()
-        st.subheader("Pré-visualização e Disparo WhatsApp (Twilio API)")
+        theme.divider()
+        st.subheader("Mensagem de WhatsApp", anchor=False)
         wa_msg = build_whatsapp_summary_message(
             farmer_name="",
             location=location,
@@ -406,8 +399,8 @@ def plantio_page() -> None:
             resilient_result=resilient,
         )
         st.code(wa_msg, language="markdown")
-        wa_number = st.text_input("Número WhatsApp do Agricultor (E.164)", value="+5587999990000")
-        if st.button("Enviar Mensagem via Twilio WhatsApp"):
+        wa_number = st.text_input("Número do WhatsApp (formato +55...)", value="+5587999990000")
+        if st.button("Enviar pelo WhatsApp (Twilio)", type="primary"):
             client = TwilioWhatsAppClient(
                 account_sid=settings.twilio_account_sid,
                 auth_token=settings.twilio_auth_token,
@@ -417,7 +410,7 @@ def plantio_page() -> None:
             st.success(f"Disparo processado ({dispatch.mode}) para {dispatch.to_number} | SID: {dispatch.sid}")
 
     with tab_emater:
-        st.subheader("Ficha Técnica 'O Que Não Sabemos' (1 Página A4 para EMATER/Cooperativa)")
+        st.subheader("Ficha de 1 página: o que o modelo vê e o que não vê", anchor=False)
         pdf_bytes = generate_one_pager_pdf(
             location=location,
             config=config,
@@ -426,13 +419,14 @@ def plantio_page() -> None:
             results=results,
         )
         st.download_button(
-            label="Exportar Ficha 'O Que Não Sabemos' (PDF 1 Página)",
+            label="Baixar a ficha (PDF)",
             data=pdf_bytes,
-            file_name=f"ficha_resiliencia_{location.location_id}.pdf",
+            file_name=f"ficha_acaua_{location.location_id}.pdf",
             mime="application/pdf",
+            type="primary",
         )
 
-        with st.expander("O Que Não Sabemos — Limitações Explícitas do Algoritmo", expanded=True):
+        with st.expander("O que não sabemos: limites do modelo", expanded=True):
             for idx, item in enumerate(WHAT_WE_DONT_KNOW_ITEMS, start=1):
                 st.markdown(f"{idx}. {item}")
 
@@ -444,8 +438,17 @@ def plantio_page() -> None:
         st.dataframe(df_pareto.to_pandas(), width="stretch", hide_index=True)
 
     with tab_lakehouse:
-        st.subheader("Local Data Lakehouse (CHIRPS/GPM + SMAP + ZARC em Parquet/DuckDB)")
+        st.subheader("Clima por ano usado na simulação", anchor=False)
         st.dataframe(df_climate_annual.to_pandas(), width="stretch", hide_index=True)
+        st.caption(
+            f"Simulação: {sum(r.execution_ms for r in results):.0f} ms para {len(results)} rotações x "
+            f"{N_SCENARIOS:,} cenários; consulta ao lakehouse (DuckDB) em {climate_stats.query_ms:.1f} ms.".replace(",", ".")
+        )
+
+    theme.footer(
+        "Fontes: chuva NASA POWER (MERRA-2/GEOS-IT); janelas ZARC (MAPA/Embrapa); solo ISRIC SoilGrids; "
+        "relevo SRTM. Detalhes em docs/referencias.md."
+    )
 
 
 HOME_PAGE = navigation.register(
@@ -458,10 +461,10 @@ SATELLITE_PAGE = navigation.register(
 
 
 def main() -> None:
-    st.set_page_config(
-        page_title="Acauã · Conselheiro do Sertão",
-        layout="wide",
-    )
+    st.set_page_config(page_title="Acauã", page_icon=theme.asset("icone.png"), layout="wide")
+    theme.inject()
+    # sem barra lateral o Streamlit mostraria o icon_image; queremos o letreiro "Acauã" sempre
+    st.logo(theme.asset("logo_marca.png"), size="large")
     st.navigation([HOME_PAGE, PLANTIO_PAGE, SATELLITE_PAGE], position="top").run()
 
 

@@ -20,7 +20,7 @@ from crop_optimizer.analytics.soil_suitability import (
     relief_class,
     texture_class,
 )
-from crop_optimizer.app import navigation
+from crop_optimizer.app import theme
 from crop_optimizer.app.common import (
     current_location,
     example_selector,
@@ -146,18 +146,17 @@ def _field_form(location_id: str, profile: SoilProfile) -> None:
 
 def home_page() -> None:
     arrived("inicio")
-    st.title("Perfil do local")
     location, roca = current_location()
-
-    top = st.columns([3, 2])
-    with top[0]:
-        if roca is not None:
-            st.markdown(f"**Sua roça:** {roca.label}")
-        else:
-            st.caption("Ainda sem roça marcada. Mostrando um município de exemplo.")
+    if roca is not None:
+        theme.page_header("Perfil do local", roca.municipio and f"{roca.municipio}/{roca.uf}" or "Sua roça",
+                          f"Sua roça · {roca.lat:.4f}, {roca.lon:.4f}", mascot="mascote_frente.png")
+    else:
+        theme.page_header("Perfil do local", f"{location.name}/{location.state}",
+                          "Município de exemplo. Marque a sua roça no mapa para ver o ponto dela.",
+                          mascot="mascote_frente.png")
+        left, _ = st.columns([2, 3])
+        with left:
             location = example_selector()
-    with top[1]:
-        navigation.link("satelite", "Marcar ou trocar a roça no mapa")
 
     today = date.today()
     loc_json = location.model_dump_json()
@@ -187,17 +186,17 @@ def home_page() -> None:
     if report is not None:
         title, _, level = describe_status(report.status)
         getattr(st, level)(f"**Chuva agora:** {title}.")
-        navigation.link("plantio", "Ver o atraso da chuva e as rotações")
 
     for warning in profile.warnings:
         st.warning(warning)
 
     # --- solo por cultura ---------------------------------------------------
-    st.subheader("O solo é bom para quê?")
-    st.caption(
+    theme.divider()
+    theme.label("Solo por cultura")
+    st.header("O solo é bom para quê?", anchor=False)
+    st.markdown(
         "O mesmo solo pode ser bom para uma cultura e ruim para outra: pouco nitrogênio pesa no milho, "
-        "mas não no feijão-caupi, que fixa o próprio nitrogênio. Cada cultura é comparada fator por fator "
-        "com o que ela exige; o fator mais fraco manda."
+        "mas não no feijão-caupi, que fixa o próprio nitrogênio. **O fator mais fraco manda.**"
     )
     st.dataframe(_suitability_table(results), hide_index=True, width="stretch")
     if any(c.any_assumed for c in results) or any(profile.source_of(a) == "referencia" for a in FIELD_ONLY):
@@ -212,7 +211,9 @@ def home_page() -> None:
                 st.markdown(f"- **{f.label}:** limitação {DEGREE_LABELS[f.degree]}. {f.reason}.{mark}")
 
     # --- atributos do solo --------------------------------------------------
-    st.subheader("Solo e relevo")
+    theme.divider()
+    theme.label("Solo e relevo")
+    st.header("De onde vem cada número", anchor=False)
     if profile.field_date:
         st.caption(f"Análise de campo informada em {profile.field_date}.")
     st.dataframe(_soil_table(profile), hide_index=True, width="stretch")
@@ -220,16 +221,33 @@ def home_page() -> None:
 
     # --- janelas oficiais ---------------------------------------------------
     if report is not None:
-        st.subheader("Janela oficial de plantio (ZARC)")
+        theme.divider()
+        theme.label(f"ZARC {report.zarc_safra or ''} · MAPA/Embrapa".strip())
+        st.header("Janela oficial de plantio", anchor=False)
         if report.zarc_error:
             st.warning(report.zarc_error)
         else:
             for cw in report.crop_windows:
                 st.markdown(f"- **{_ZARC_LABELS.get(cw.crop_id, cw.crop_id)}**: {cw.phrase}")
 
-    st.caption(
-        "Fontes: solo do ISRIC SoilGrids 2.0 (mapa de 250 m, camada 0-20 cm); relevo do SRTM via Terrain Tiles "
-        "(AWS); chuva do NASA POWER; janelas do ZARC (MAPA/Embrapa). Classes de análise de solo: Alvarez V. et "
-        "al. (1999). Limitação por cultura no estilo Ramalho Filho & Beek (Embrapa) com notas de Sys et al. "
-        "(1991). Exigências das culturas precisam de revisão de agronomia (docs/referencias.md)."
+    # --- chamada final (o único bloco grande na cor de destaque) -----------
+    if roca is None:
+        theme.cta(
+            "Este perfil é do município. E a sua roça?",
+            "Marque o ponto da roça no mapa: a chuva, o solo e as janelas passam a ser os dela.",
+            "satelite",
+            "Marcar a roça no mapa",
+        )
+    else:
+        theme.cta(
+            "Com esse solo e essa chuva, dá para plantar agora?",
+            "Veja o aviso do Acauã e qual roça aguenta mais nos próximos anos.",
+            "plantio",
+            "Ver se dá para plantar",
+        )
+
+    theme.footer(
+        "Fontes: solo ISRIC SoilGrids 2.0 (250 m, 0-20 cm); relevo SRTM (Terrain Tiles/AWS); chuva NASA POWER; "
+        "janelas ZARC (MAPA/Embrapa). Classes de análise: Alvarez V. et al. (1999). Limitação por cultura: "
+        "Ramalho Filho & Beek (Embrapa) e Sys et al. (1991); exigências a revisar por agrônomo."
     )
