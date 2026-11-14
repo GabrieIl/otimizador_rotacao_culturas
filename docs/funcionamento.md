@@ -119,6 +119,17 @@ São os anos de 1991-2020 que, nesta mesma altura, ainda estavam esperando chuva
 
 O atraso vai para o Monte Carlo cortado entre 0 e 45 dias.
 
+### 4.7 Veranico
+**Veranico** = dias seguidos sem chuva **depois que a chuva firmou**. Quebra a safra mesmo em ano de chuva
+normal no total, principalmente se pega a floração do milho. É diferente do atraso, que é a chuva demorar a
+começar.
+- Em cada safra de 1991-2020 com chuva firme, medimos a maior sequência de dias secos (< 1 mm) nos 90 dias
+  seguintes. Veranico = 10 dias ou mais (`config/chuva.yaml`, `# CONFERIR`).
+- O Monte Carlo usa a **chance observada** no local e **sorteia o tamanho entre os veranicos que
+  aconteceram**. Petrolina: 8 de cada 10 anos (até 33 dias); Quixadá: 2 de cada 10.
+- Na safra em andamento, a Plantio avisa a partir de 5 dias seguidos sem chuva.
+- Não existe mais controle manual de veranico (antes era um slider que somava dias a todo ano).
+
 ### 4.5 Janela oficial do ZARC
 - O **ZARC** (Zoneamento Agrícola de Risco Climático) é a referência oficial do MAPA, feita pela Embrapa. É a
   base do Proagro e do seguro rural. Para cada município, cultura, tipo de solo e ciclo, diz em quais
@@ -221,8 +232,11 @@ seções 1.4 a 1.8). Detalhes em [features/03-perfil-do-local.md](features/03-pe
 
 - **Barra de navegação no topo:** **Início** (perfil do local e solo por cultura), **Plantio** (chuva, ZARC,
   semáforo, placar, rádio, ficha) e **Satélite** (mapa e lentes).
-- **Barra lateral → "Data de hoje":** o atraso é calculado para essa data. Troque para mostrar outra
-  época (o demo acontece fora da estação). Ex.: Irecê em 20/12/2025 mostra chuva atrasada.
+- **Plantio não tem barra lateral.** O local vem da roça marcada no mapa (ou do município de exemplo escolhido
+  na Início/Satélite). "📅 Simular outra data", no topo e fechado, troca o dia usado no cálculo da chuva
+  (útil para a demonstração fora da época). Ex.: Irecê em 20/12/2025 mostra chuva atrasada.
+- **Horizonte da simulação** (1, 2, 3 ou 5 anos) é um filtro em "🔁 Rotações" e vale só para os painéis
+  da simulação. Com 1 ano, o risco mostrado é "perder a safra no ano", não "2 anos seguidos".
 - **"🌧️ Chuva da safra":** frase principal, quatro números (quando firmou, normal, atraso, atraso usado na
   simulação), fonte e critério na legenda, e janelas do ZARC.
 - **Semáforo e placar (abaixo):** usam o atraso calculado, mas o clima de fundo ainda é sintético (seção 2).

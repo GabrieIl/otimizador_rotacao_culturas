@@ -45,6 +45,7 @@ def compose_radio_script(
     traffic_light: TrafficLightLevel,
     traditional_result: StrategySimulationResult,
     resilient_result: StrategySimulationResult,
+    horizon_years: int = 5,
 ) -> str:
     """Compila o Placar de Sobrevivência e o Semáforo em linguagem falada, simples e direta."""
     if traffic_light == TrafficLightLevel.VERDE:
@@ -53,13 +54,16 @@ def compose_radio_script(
             "O sinal está verde para plantar com cuidado."
         )
     elif traffic_light == TrafficLightLevel.AMARELO:
-        clima_frase = (
-            f"Atenção: com {delay_days} dias de atraso na chuva em {location.name}, "
-            "o sinal ficou amarelo. Insistir só no milho já traz perigo."
+        motivo = (
+            f"com {delay_days} dias de atraso na chuva em {location.name}"
+            if delay_days > 0
+            else f"pelo histórico de chuva de {location.name}"
         )
+        clima_frase = f"Atenção: {motivo}, o sinal ficou amarelo. Insistir só no milho já traz perigo."
     else:
+        motivo = f"a chuva atrasou {delay_days} dias" if delay_days > 0 else "o histórico de chuva é de muito risco"
         clima_frase = (
-            f"Alerta vermelho em {location.name}: a chuva atrasou {delay_days} dias. "
+            f"Alerta vermelho em {location.name}: {motivo}. "
             "Guarde a semente do milho porque o risco de perder a roça é extremo."
         )
 
@@ -68,13 +72,16 @@ def compose_radio_script(
     forage_fmt = f"{round(resilient_result.expected_forage_kg_ha_year):,}".replace(",", ".")
     herd_risk_pct = round(traditional_result.prob_herd_collapse * 100)
 
+    saudacao = f"Alô, {farmer_name}!" if farmer_name else "Alô, agricultora e agricultor!"
+    periodo = "para o próximo ano" if horizon_years == 1 else f"para os próximos {horizon_years} anos"
+    rebanho = "no ano" if horizon_years == 1 else "em dois anos seguidos"
     return (
-        f"Alô, {farmer_name}! Aqui é o Rádio do Tempo do seu conselheiro de bolso. "
+        f"{saudacao} Aqui é o Rádio do Tempo do seu conselheiro de bolso. "
         f"{clima_frase} "
-        f"O aplicativo rodou dez mil cálculos para os próximos cinco anos. "
+        f"O aplicativo rodou dez mil cálculos {periodo}. "
         f"Se o senhor apostar apenas em {trad_name}, "
         f"em cada dez anos o senhor perde a lavoura em {traditional_result.loss_years_of_10}, "
-        f"com chance de {herd_risk_pct}% de faltar comida para o rebanho em dois anos seguidos. "
+        f"com chance de {herd_risk_pct}% de faltar comida para o rebanho {rebanho}. "
         f"Já se o senhor adotar {res_name}, "
         f"a perda cai para {resilient_result.loss_years_of_10} anos em dez, "
         f"garantindo cerca de {forage_fmt} quilos de forragem por hectare todo ano "

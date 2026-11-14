@@ -177,7 +177,7 @@ Para trocar a safra do ZARC: baixe o CSV novo para `data/bronze/zarc/` e atualiz
 
 - [ ] Revisão de agronomia/meteorologia dos limiares em `config/chuva.yaml`.
 - [ ] Baixar o dicionário de dados do ZARC e permitir escolher o tipo de solo.
-- [ ] O Rádio do Tempo e o WhatsApp dizem "atrasou 0 dias" quando ainda não é época.
+- [x] O Rádio do Tempo dizia "atrasou 0 dias" quando ainda não era época (corrigido na Feature 4).
 - [ ] O semáforo e o Monte Carlo ainda usam o clima sintético do modo offline. Só o atraso é real.
 - [ ] A CLI (`--delay-days`) e a API (`safra_delay_days`) ainda recebem o atraso à mão.
 - [ ] Trocar o falso `EmbrapaZarcSource` pela tábua real.

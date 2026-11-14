@@ -239,3 +239,74 @@ def assess_season(
     return RainSeasonStatus(
         state="atrasada", delay_days=(data_until - ref_date).days, still_came_of_10=still, **common
     )
+
+
+# --- veranico -------------------------------------------------------------------
+
+@dataclass(frozen=True, slots=True)
+class VeranicoClimatology:
+    """Veranicos da normal: a maior sequência de dias secos depois que a chuva firmou, por safra."""
+
+    min_days: int
+    window_days: int
+    seasons_with_onset: int
+    longest_spells: tuple[int, ...]  # maior sequência seca de cada safra com chuva firme
+
+    @property
+    def veranico_lengths(self) -> tuple[int, ...]:
+        """Só as safras que tiveram veranico (sequência >= min_days)."""
+        return tuple(s for s in self.longest_spells if s >= self.min_days)
+
+    @property
+    def probability(self) -> float:
+        if not self.seasons_with_onset:
+            return 0.0
+        return len(self.veranico_lengths) / self.seasons_with_onset
+
+    @property
+    def of_10(self) -> int:
+        return round(10 * self.probability)
+
+    @property
+    def typical_longest(self) -> int:
+        """Mediana da maior sequência seca (todas as safras com chuva firme)."""
+        return int(np.median(self.longest_spells)) if self.longest_spells else 0
+
+    @classmethod
+    def from_config(cls, reference: OnsetReference, dates: np.ndarray, precip: np.ndarray,
+                    criteria: OnsetCriteria) -> VeranicoClimatology:
+        cfg = load_yaml_config("chuva")["veranico"]
+        return build_veranico_climatology(
+            dates, precip, reference, criteria, int(cfg["dias_minimos"]), int(cfg["janela_apos_inicio_dias"])
+        )
+
+
+def build_veranico_climatology(
+    dates: np.ndarray,
+    precip: np.ndarray,
+    reference: OnsetReference,
+    criteria: OnsetCriteria,
+    min_days: int,
+    window_days: int,
+) -> VeranicoClimatology:
+    spells: list[int] = []
+    for year, offset in zip(reference.season_years, reference.offsets, strict=True):
+        if offset is None:
+            continue  # sem chuva firme: é seca da safra inteira, já entra pela chuva total
+        onset = date(year, reference.hydro_start_month, 1) + timedelta(days=offset)
+        # conta a partir do fim dos 3 dias de chuva que firmaram a estação
+        seg = _slice(dates, precip, onset + timedelta(days=3), onset + timedelta(days=window_days))
+        spells.append(_longest_dry_run(seg, criteria.wet_day_mm))
+    return VeranicoClimatology(min_days, window_days, len(spells), tuple(spells))
+
+
+def current_dry_days(dates: np.ndarray, precip: np.ndarray, until: date, wet_day_mm: float) -> int:
+    """Dias seguidos sem chuva terminando em `until` (inclusive)."""
+    end = int(np.searchsorted(dates, np.datetime64(until), side="right"))
+    count = 0
+    for v in precip[:end][::-1]:
+        if np.isnan(v) or v < wet_day_mm:
+            count += 1
+        else:
+            break
+    return count

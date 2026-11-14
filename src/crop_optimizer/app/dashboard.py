@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import date
 
 import streamlit as st
@@ -32,6 +33,7 @@ from crop_optimizer.analytics.soil_suitability import (
     evaluate,
     initial_markov_state,
 )
+from crop_optimizer.analytics.views import loss_risk_label
 from crop_optimizer.app import navigation
 from crop_optimizer.app.charts import (
     plot_balance_scale_bars,
@@ -40,12 +42,12 @@ from crop_optimizer.app.charts import (
     plot_planting_window_heatmap,
     plot_survival_scoreboard,
 )
-from crop_optimizer.app.common import example_selector, soil_profile
+from crop_optimizer.app.common import current_location, soil_profile
 from crop_optimizer.app.common import lakehouse_catalog as _get_lakehouse_catalog
 from crop_optimizer.app.common import rain_delay_report as _rain_delay_report
 from crop_optimizer.app.home_page import home_page
 from crop_optimizer.app.satellite_page import satellite_page
-from crop_optimizer.app.state import clear_roca, get_roca
+from crop_optimizer.app.state import clear_roca
 from crop_optimizer.config import get_settings
 from crop_optimizer.domain.models import (
     BalancePriority,
@@ -64,6 +66,9 @@ from crop_optimizer.engine.rain_onset import OnsetCriteria
 from crop_optimizer.ingestion.rain_history import RainDataUnavailable
 
 DELAY_GRID = [0, 7, 14, 21, 28, 35]
+N_SCENARIOS = 10_000  # fixo: cenários do Monte Carlo
+HORIZONS = [1, 2, 3, 5]  # anos; escolhido como filtro dos painéis que usam a simulação
+DEFAULT_HORIZON = 5
 _CROP_LABELS = {
     "milho_sertanejo": "Milho",
     "feijao_caupi": "Feijão-caupi",
@@ -89,6 +94,15 @@ def _render_rain_section(report: RainDelayReport) -> None:
     else:
         c3.metric("Atraso", f"{s.delay_days} dias")
     c4.metric("Atraso usado na simulação", f"{report.motor_delay_days} dias")
+    if report.veranico_alert:
+        st.warning(f"**{report.veranico_alert}**")
+    if report.veranico is not None and report.veranico.seasons_with_onset:
+        v = report.veranico
+        st.markdown(
+            f"**Veranico** ({v.min_days} dias ou mais sem chuva depois que a chuva firma): aconteceu em "
+            f"**{v.of_10} de cada 10 anos** de {s.reference.first_year} a {s.reference.last_year}. "
+            f"A maior seca dentro da safra costuma durar **{v.typical_longest} dias**."
+        )
 
     crit = OnsetCriteria.from_config()
     ref = s.reference
@@ -114,21 +128,40 @@ def _render_rain_section(report: RainDelayReport) -> None:
         )
 
 
+def _climate_stats(location_id: str, veranico_prob: float | None, veranico_lengths: tuple[int, ...]):
+    """Estatísticas do lakehouse com o veranico trocado pelo observado na chuva real (NASA POWER)."""
+    stats = _get_lakehouse_catalog().get_seasonal_climate_stats(location_id)
+    if veranico_prob is None:
+        return stats
+    return replace(stats, veranico_prob=veranico_prob, veranico_lengths=veranico_lengths)
+
+
 @st.cache_data(show_spinner=False)
+def _risk_matrix(location_id: str, safra_delay_days: int, typical_veranico_days: int,
+                 veranico_prob: float | None, veranico_lengths: tuple[int, ...]):
+    """Matriz atraso x cultura do semáforo (não depende do horizonte)."""
+    return build_planting_window_risk_matrix(
+        _climate_stats(location_id, veranico_prob, veranico_lengths),
+        delay_days_grid=sorted({*DELAY_GRID, safra_delay_days}),
+        veranico_days=typical_veranico_days,
+        n_samples=N_SCENARIOS,
+    )
+
+
+@st.cache_data(show_spinner="Rodando 10.000 cenários...")
 def _run_cached_simulation(
     location_id: str,
     horizon_years: int,
-    n_scenarios: int,
     initial_soil_val: int,
     safra_delay_days: int,
-    veranico_days: int,
-    farmer_name: str,
+    veranico_prob: float | None = None,
+    veranico_lengths: tuple[int, ...] = (),
     initial_om_pct: float = 2.2,
     initial_n_kg_ha: float = 55.0,
     soil_factors: tuple[tuple[str, float], ...] = (),
 ):
     catalog = _get_lakehouse_catalog()
-    climate_stats = catalog.get_seasonal_climate_stats(location_id)
+    climate_stats = _climate_stats(location_id, veranico_prob, veranico_lengths)
     locations = {loc.location_id: loc for loc in catalog.load_locations()}
     location = locations[location_id]
     crops = {c.crop_id: c for c in catalog.load_crops()}
@@ -137,24 +170,17 @@ def _run_cached_simulation(
     config = SimulationConfig(
         location_id=location_id,
         horizon_years=horizon_years,
-        n_scenarios=n_scenarios,
+        n_scenarios=N_SCENARIOS,
         initial_soil_state=SoilHealthState(initial_soil_val),
         initial_organic_matter_pct=initial_om_pct,
         initial_nitrogen_kg_ha=initial_n_kg_ha,
         soil_crop_factors=dict(soil_factors),
         safra_delay_days=safra_delay_days,
-        veranico_days=veranico_days,
-        farmer_name=farmer_name,
+        veranico_days=0,  # o veranico vem do sorteio com o histórico real, não de um valor fixo
     )
     results = engine.simulate_portfolio(DEFAULT_STRATEGIES, climate_stats, config)
     compute_pareto_frontier(results, criterion="two_year_loss")
 
-    df_matrix = build_planting_window_risk_matrix(
-        climate_stats,
-        delay_days_grid=sorted({*DELAY_GRID, safra_delay_days}),
-        veranico_days=veranico_days,
-        n_samples=n_scenarios,
-    )
     df_scoreboard = build_survival_scoreboard_frame(results)
     df_balance = build_balance_tradeoff_frame(results)
     df_pareto = build_pareto_frontier_frame(results)
@@ -166,7 +192,6 @@ def _run_cached_simulation(
         config,
         climate_stats,
         results,
-        df_matrix,
         df_scoreboard,
         df_balance,
         df_pareto,
@@ -182,50 +207,41 @@ def plantio_page() -> None:
         "10.000 Cenários em NumPy · Rádio do Tempo (TTS) · Ficha EMATER"
     )
 
-    catalog = _get_lakehouse_catalog()
-    locations = catalog.load_locations()
-    locations_by_id = {loc.location_id: loc for loc in locations}
-    roca = get_roca()
+    location_now, roca = current_location()
+    if roca is not None:
+        # a chuva, o ZARC e o solo usam o ponto da roça; o Monte Carlo só tem clima dos exemplos
+        nearest, nearest_km = nearest_preset(roca.lat, roca.lon)
+        location_id = nearest.location_id
+    else:
+        location_id = location_now.location_id
+    rain_location = location_now
 
-    with st.sidebar:
-        st.header("Painel do Agricultor / Técnico")
-        farmer_name = st.text_input("Nome do Agricultor", value="Seu João")
+    top = st.columns([3, 2])
+    with top[0]:
         if roca is not None:
-            # a chuva e o ZARC usam o ponto da roça; o Monte Carlo só tem clima dos municípios de exemplo
-            nearest, nearest_km = nearest_preset(roca.lat, roca.lon)
-            location_id = nearest.location_id
-            rain_location = roca.to_location()
-            st.info(f"📍 **Sua roça:** {roca.label}")
-            if st.button("Usar os municípios de exemplo"):
-                clear_roca()
-                st.rerun()
-            navigation.link("satelite", "Trocar a roça no mapa", "🛰️")
+            st.markdown(f"📍 **Sua roça:** {roca.label}")
         else:
-            location_id = example_selector().location_id
-            rain_location = locations_by_id[location_id]
-            navigation.link("satelite", "Marcar a minha roça no mapa", "🛰️")
-
+            st.markdown(f"📍 **Local:** {location_now.name}/{location_now.state} (município de exemplo)")
+    with top[1]:
+        navigation.link("satelite", "Marcar ou trocar a roça no mapa", "🛰️")
+        if roca is not None and st.button("Voltar aos municípios de exemplo"):
+            clear_roca()
+            st.rerun()
+    with st.expander("📅 Simular outra data"):
         as_of = st.date_input(
-            "Data de hoje",
+            "Data",
             value=date.today(),
             max_value=date.today(),
             format="DD/MM/YYYY",
-            help="O atraso da chuva é calculado para esta data. Troque para simular outra época do ano.",
+            key="data_simulada",
+            help="O atraso da chuva é calculado para esta data. Útil para mostrar outra época do ano.",
         )
-        veranico_days = st.slider("Veranico na Quadra Chuvosa (dias secos)", min_value=0, max_value=21, value=7, step=7)
-        horizon_years = st.slider("Horizonte (anos)", min_value=3, max_value=5, value=5)
-        n_scenarios = st.select_slider(
-            "Cenários Monte Carlo",
-            options=[2_000, 5_000, 10_000, 20_000],
-            value=10_000,
-        )
+    if as_of != date.today():
+        st.caption(f"📅 Simulando o dia **{as_of:%d/%m/%Y}**.")
 
-        # O solo vem do perfil do local (Início): mapa SoilGrids/SRTM ou análise de campo.
-        profile = soil_profile(rain_location)
-        suitability = evaluate(profile)
-        st.markdown("**Solo da roça por cultura**")
-        st.caption(" · ".join(f"{c.icon} {c.name}" for c in suitability))
-        navigation.link("inicio", "Ver o perfil do solo e ajustar com análise", "🧱")
+    # O solo vem do perfil do local (Início): mapa SoilGrids/SRTM ou análise de campo.
+    profile = soil_profile(rain_location)
+    suitability = evaluate(profile)
 
     try:
         rain_report = _rain_delay_report(rain_location.model_dump_json(), as_of)
@@ -235,9 +251,19 @@ def plantio_page() -> None:
             "A simulação abaixo roda SEM atraso de chuva."
         )
         safra_delay_days = 0
+        rain_report = None
     else:
         _render_rain_section(rain_report)
         safra_delay_days = rain_report.motor_delay_days
+    veranico = rain_report.veranico if rain_report is not None else None
+    if veranico is not None and veranico.seasons_with_onset:
+        veranico_args = (round(veranico.probability, 3), veranico.veranico_lengths)
+        typical_veranico = veranico.typical_longest
+    else:
+        veranico_args, typical_veranico = (None, ()), 7
+
+    st.caption("🧱 **Solo por cultura:** " + " · ".join(f"{c.icon} {c.name}" for c in suitability))
+    navigation.link("inicio", "Ver o perfil do solo e ajustar com análise de campo", "🧱")
     st.divider()
     if roca is not None:
         st.warning(
@@ -246,35 +272,7 @@ def plantio_page() -> None:
             "Só a chuva e a janela do ZARC acima são do ponto da sua roça."
         )
 
-    (
-        location,
-        config,
-        climate_stats,
-        results,
-        df_matrix,
-        df_scoreboard,
-        df_balance,
-        df_pareto,
-        df_nutrients,
-        df_climate_annual,
-    ) = _run_cached_simulation(
-        location_id=location_id,
-        horizon_years=horizon_years,
-        n_scenarios=n_scenarios,
-        initial_soil_val=int(initial_markov_state(profile.get("mo_pct"))),
-        safra_delay_days=safra_delay_days,
-        veranico_days=veranico_days,
-        farmer_name=farmer_name,
-        initial_om_pct=round(profile.get("mo_pct"), 2),
-        initial_n_kg_ha=round(available_nitrogen_kg_ha(profile), 1),
-        soil_factors=tuple(sorted((c.crop_id, round(c.yield_factor, 3)) for c in suitability)),
-    )
-
-    by_id = {r.strategy.strategy_id: r for r in results}
-    traditional = by_id.get("so_milho_tradicional", results[0])
-    ranked = rank_by_survival(results)
-    resilient = ranked[0]
-
+    df_matrix = _risk_matrix(location_id, safra_delay_days, typical_veranico, *veranico_args)
     corn_row = df_matrix.filter(
         (df_matrix["crop_id"] == "milho_sertanejo") & (df_matrix["delay_days"] == safra_delay_days)
     )
@@ -289,9 +287,44 @@ def plantio_page() -> None:
     else:
         st.error(f"{traffic_light.emoji} **SEMÁFORO VERMELHO — {traffic_light.guidance}** (atraso {safra_delay_days}d | risco milho: {corn_risk_pct:.0f}%)")
 
+    st.subheader("🔁 Rotações")
+    horizon_years = st.segmented_control(
+        "Horizonte da simulação",
+        options=HORIZONS,
+        default=DEFAULT_HORIZON,
+        format_func=lambda h: "1 ano" if h == 1 else f"{h} anos",
+        key="horizonte",
+        help="Quantos anos à frente os 10.000 cenários simulam. Vale para os painéis abaixo.",
+    ) or DEFAULT_HORIZON
+    (
+        location,
+        config,
+        climate_stats,
+        results,
+        df_scoreboard,
+        df_balance,
+        df_pareto,
+        df_nutrients,
+        df_climate_annual,
+    ) = _run_cached_simulation(
+        location_id=location_id,
+        horizon_years=horizon_years,
+        initial_soil_val=int(initial_markov_state(profile.get("mo_pct"))),
+        safra_delay_days=safra_delay_days,
+        veranico_prob=veranico_args[0],
+        veranico_lengths=veranico_args[1],
+        initial_om_pct=round(profile.get("mo_pct"), 2),
+        initial_n_kg_ha=round(available_nitrogen_kg_ha(profile), 1),
+        soil_factors=tuple(sorted((c.crop_id, round(c.yield_factor, 3)) for c in suitability)),
+    )
+    by_id = {r.strategy.strategy_id: r for r in results}
+    traditional = by_id.get("so_milho_tradicional", results[0])
+    resilient = rank_by_survival(results)[0]
+    risk = loss_risk_label(horizon_years).capitalize()
+
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Só Milho (Perda em 10)", f"{traditional.loss_years_of_10} de 10 anos", delta=f"Risco 2 anos seguidos: {traditional.prob_two_consecutive_losses*100:.0f}%", delta_color="inverse")
-    c2.metric(resilient.strategy.short_name, f"Sobrevive {resilient.survival_score_of_10} de 10", delta=f"Risco 2 anos seguidos: {resilient.prob_two_consecutive_losses*100:.0f}%")
+    c1.metric("Só Milho (Perda em 10)", f"{traditional.loss_years_of_10} de 10 anos", delta=f"{risk}: {traditional.prob_two_consecutive_losses*100:.0f}%", delta_color="inverse")
+    c2.metric(resilient.strategy.short_name, f"Sobrevive {resilient.survival_score_of_10} de 10", delta=f"{risk}: {resilient.prob_two_consecutive_losses*100:.0f}%")
     c3.metric("🌿 Forragem Garantida", f"{resilient.expected_forage_kg_ha_year:,.0f} kg/ha·ano".replace(",", "."))
     c4.metric("⚡ Latência Total", f"{sum(r.execution_ms for r in results):.0f} ms", delta=f"DuckDB: {climate_stats.query_ms:.1f} ms")
 
@@ -318,7 +351,7 @@ def plantio_page() -> None:
                 BalancePriority.EQUILIBRADO: "⚖️ Equilíbrio Geral",
                 BalancePriority.COMIDA: "🌽 Comida na Mesa (Grãos)",
                 BalancePriority.FORRAGEM: "🌿 Salvar o Rebanho (Forragem/Palma)",
-                BalancePriority.ESCUDO: "🛡️ Escudo (Evitar 2 Anos de Perda)",
+                BalancePriority.ESCUDO: "🛡️ Escudo (Evitar 2 Anos de Perda)" if horizon_years >= 2 else "🛡️ Escudo (Evitar Perder a Safra)",
             }[p],
             horizontal=True,
         )
@@ -341,12 +374,13 @@ def plantio_page() -> None:
     with tab_radio:
         st.subheader("📻 O Rádio do Tempo — Resumo Falado para WhatsApp")
         script = compose_radio_script(
-            farmer_name=farmer_name,
+            farmer_name="",
             location=location,
             delay_days=safra_delay_days,
             traffic_light=traffic_light,
             traditional_result=traditional,
             resilient_result=resilient,
+            horizon_years=horizon_years,
         )
         st.text_area("Roteiro do Áudio (Linguagem Acessível)", value=script, height=130)
 
@@ -364,7 +398,7 @@ def plantio_page() -> None:
         st.divider()
         st.subheader("📲 Pré-visualização e Disparo WhatsApp (Twilio API)")
         wa_msg = build_whatsapp_summary_message(
-            farmer_name=farmer_name,
+            farmer_name="",
             location=location,
             delay_days=safra_delay_days,
             traffic_light=traffic_light,
@@ -404,7 +438,7 @@ def plantio_page() -> None:
 
         col_p, col_n = st.columns(2)
         with col_p:
-            st.plotly_chart(plot_pareto_frontier(df_pareto), width="stretch")
+            st.plotly_chart(plot_pareto_frontier(df_pareto, horizon_years=horizon_years), width="stretch")
         with col_n:
             st.plotly_chart(plot_nutrient_dynamics(df_nutrients, metric="om_mean_pct"), width="stretch")
         st.dataframe(df_pareto.to_pandas(), width="stretch", hide_index=True)

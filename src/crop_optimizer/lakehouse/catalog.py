@@ -28,6 +28,9 @@ class SeasonalClimateStats:
     query_ms: float
     veranico_prob: float = 0.30
     mean_smap_moisture: float = 0.24
+    # Tamanhos (dias) dos veranicos observados na chuva real (NASA POWER, 1991-2020); vazio = usa o
+    # sorteio antigo de 8 a 18 dias.
+    veranico_lengths: tuple[int, ...] = ()
 
 
 class LakehouseCatalog:
