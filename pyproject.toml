@@ -1,0 +1,64 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "crop-optimizer"
+version = "0.2.0"
+description = "Motor Estocástico de Resiliência do Sertão: Local Data Lakehouse (NASA CHIRPS/SMAP + ZARC em Parquet/DuckDB), Monte Carlo de Sobrevivência (NumPy), Cadeias de Markov, Rádio do Tempo (TTS), PDF One-Pager e WhatsApp/Twilio."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=2.0.0",
+    "polars>=1.0.0",
+    "duckdb>=1.1.0",
+    "pyarrow>=18.0.0",
+    "pandas>=2.2.0",
+    "streamlit>=1.40.0",
+    "plotly>=5.24.0",
+    "httpx>=0.27.0",
+    "pydantic>=2.8.0",
+    "fpdf2>=2.8.0",
+    "gTTS>=2.5.0",
+    "starlette>=0.40.0",
+    "uvicorn>=0.30.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=6.0.0",
+    "ruff>=0.6.0",
+]
+
+[project.scripts]
+crop-opt = "crop_optimizer.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-v --tb=short"
+
+[tool.coverage.run]
+source = ["crop_optimizer"]
+branch = false
+omit = [
+    "src/crop_optimizer/__main__.py",
+    "src/crop_optimizer/app/dashboard.py",
+]
+
+[tool.coverage.report]
+show_missing = true
+fail_under = 80
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = ["E501"]
