@@ -6,7 +6,12 @@ from datetime import date
 
 import streamlit as st
 
-from crop_optimizer.analytics.rain_delay import RainDelayReport, build_rain_delay_report
+from crop_optimizer.analytics.rain_delay import (
+    RainDelayReport,
+    ZarcStatusReport,
+    build_rain_delay_report,
+    fetch_location_zarc,
+)
 from crop_optimizer.app.state import clear_roca, get_roca, keep, store, stored, watch
 from crop_optimizer.config import get_settings
 from crop_optimizer.domain.models import LocationSpec
@@ -33,8 +38,20 @@ def lakehouse_catalog() -> LakehouseCatalog:
 
 
 @st.cache_data(show_spinner="Calculando a chuva da safra (NASA POWER + ZARC)...")
-def rain_delay_report(location_json: str, as_of: date) -> RainDelayReport:
-    return build_rain_delay_report(LocationSpec.model_validate_json(location_json), as_of)
+def rain_delay_report(
+    location_json: str,
+    as_of: date,
+    soil_group: str | None = None,
+    cycle_code: str | None = None,
+) -> RainDelayReport:
+    defaults = [d.ibge_code for d in DEFAULT_LOCATIONS if d.ibge_code]
+    return build_rain_delay_report(
+        LocationSpec.model_validate_json(location_json),
+        as_of,
+        prefetch_ibges=defaults,
+        soil_group=soil_group,
+        cycle_code=cycle_code,
+    )
 
 
 @st.cache_data(show_spinner="Baixando a chuva do ponto (NASA POWER)...")
@@ -120,12 +137,74 @@ def rain_chance(location_json: str, today: date):
     return rain_chance_by_day(rain_series(location_json, today))
 
 
+def ensure_zarc_downloaded_with_progress() -> None:
+    """Mostra barra de progresso real se o CSV bruto do ZARC ainda não estiver no disco."""
+    from crop_optimizer.ingestion.zarc_tabua import (
+        ZarcDataUnavailable,
+        download_zarc_csv,
+        is_zarc_csv_cached,
+    )
+
+    if is_zarc_csv_cached():
+        return
+    holder = st.empty()
+    bar = holder.progress(0.0, text="Baixando tábua oficial de plantio ZARC (MAPA/Embrapa)...")
+
+    def _on_progress(downloaded: int, total: int | None) -> None:
+        mb = downloaded / (1024 * 1024)
+        if total and total > 0:
+            pct = min(1.0, downloaded / total)
+            total_mb = total / (1024 * 1024)
+            bar.progress(pct, text=f"Baixando tábua oficial ZARC: {mb:.1f} de {total_mb:.1f} MB...")
+        else:
+            bar.progress(0.5, text=f"Baixando tábua oficial ZARC: {mb:.1f} MB...")
+
+    try:
+        download_zarc_csv(progress_callback=_on_progress)
+    except ZarcDataUnavailable:
+        pass
+    finally:
+        holder.empty()
+
+
+@st.cache_data(show_spinner="Carregando janelas oficiais de plantio (ZARC/MAPA)...")
+def zarc_status(
+    location_json: str,
+    season_start: date,
+    as_of: date,
+    attempt: int = 0,
+    soil_group: str | None = None,
+    cycle_code: str | None = None,
+) -> ZarcStatusReport:
+    """Janelas do ZARC e decêndios para `location` (cacheando também as regiões de exemplo)."""
+    _ = attempt  # parte da chave do cache para permitir nova tentativa manual pela interface
+    loc = LocationSpec.model_validate_json(location_json)
+    defaults = [d.ibge_code for d in DEFAULT_LOCATIONS if d.ibge_code]
+    return fetch_location_zarc(
+        loc,
+        season_start,
+        as_of,
+        prefetch_ibges=defaults,
+        soil_group=soil_group,
+        cycle_code=cycle_code,
+    )
+
+
 @st.cache_data(show_spinner=False)
-def zarc_decendios(ibge_code: str | None, zarc_name: str) -> list[int]:
+def zarc_decendios(
+    ibge_code: str | None,
+    zarc_name: str,
+    soil_group: str | None = None,
+    cycle_code: str | None = None,
+) -> list[int]:
     """Menor risco do ZARC (20/30/40) em cada um dos 36 decêndios para a cultura; 0 = não indicado."""
     import polars as pl
 
-    from crop_optimizer.ingestion.zarc_tabua import ZarcDataUnavailable, load_zarc_table
+    from crop_optimizer.ingestion.zarc_tabua import (
+        ZarcDataUnavailable,
+        _filter_crop_rows,
+        load_zarc_table,
+    )
 
     out = [0] * 36
     if not ibge_code:
@@ -134,7 +213,8 @@ def zarc_decendios(ibge_code: str | None, zarc_name: str) -> list[int]:
         table = load_zarc_table([ibge_code])
     except ZarcDataUnavailable:
         return out
-    rows = table.filter((pl.col("geocodigo") == ibge_code) & (pl.col("cultura") == zarc_name))
+    local = table.filter(pl.col("geocodigo") == ibge_code)
+    rows, _ = _filter_crop_rows(local, zarc_name, soil_group=soil_group, cycle_code=cycle_code)
     for dec, risk in rows.group_by("decendio").agg(pl.col("risco_pct").min()).iter_rows():
         out[int(dec) - 1] = int(risk)
     return out

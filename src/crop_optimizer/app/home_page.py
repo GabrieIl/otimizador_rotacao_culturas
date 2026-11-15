@@ -151,16 +151,11 @@ def _scale(local: float, values: np.ndarray | None, fmt, more: str) -> dict | No
             "phrase": f"O seu ponto tem {more} que {pct:.0f}% da região."}
 
 
-def _soil_place_section(location, profile: SoilProfile) -> None:
-    theme.label("O solo do lugar")
-    st.header("Como é o solo daqui", anchor=False)
-    st.markdown(
-        "Cada fator do solo comparado com a **região**: um quadrado de uns 55 km em volta do ponto, no mesmo mapa "
-        "(SoilGrids, camada de 0 a 20 cm). A faixa escura é onde fica a maior parte da região; o ponto terracota é o seu."
-    )
-    region = region_soil(location.latitude, location.longitude)
+def _build_soil_compare_rows(profile: SoilProfile, region: dict | None = None) -> tuple[list[dict], list[str]]:
+    """Prepara as linhas da tabela comparativa de solo destacando o que é assumido por referência."""
     cls = load_yaml_config("aptidao")["classes_analise"]
     fator = float(load_yaml_config("aptidao")["fator_carbono_para_mo"])
+    assumed: list[str] = []
 
     def reg(prop, convert=lambda a: a):
         return None if region is None or prop not in region else convert(np.asarray(region[prop]))
@@ -168,12 +163,24 @@ def _soil_place_section(location, profile: SoilProfile) -> None:
     def row(attr, label, value_txt, class_key, tone, scale, note=None):
         item = profile.values[attr] if attr else None
         source = _SOURCE[item.source] if item else "mapa SoilGrids (250 m)"
-        if item is not None and item.source == "referencia" and scale:
-            scale["phrase"] = "Sem dado no seu ponto: o valor é o típico do semiárido. A régua mostra a região."
-        if item is not None and item.source == "campo" and scale:
+        if item is not None and item.source == "referencia":
+            tone = "neutro"
+            class_key = f"{class_key} (assumido)"
+            assumed.append(label)
+            if scale:
+                scale["phrase"] = "Sem dado no seu ponto: o valor é o típico do semiárido. A régua mostra a região."
+            note = "Nenhum satélite mede este dado: usando valor típico do semiárido. Informe a análise de solo abaixo."
+        elif item is not None and item.source == "campo" and scale:
             scale["phrase"] += " (sua análise comparada com o mapa da região)"
-        return {"label": label, "value_txt": value_txt, "class_txt": class_key, "tone": tone,
-                "source_txt": source, "scale": scale, "note": note}
+        return {
+            "label": label,
+            "value_txt": value_txt,
+            "class_txt": class_key,
+            "tone": tone,
+            "source_txt": source,
+            "scale": scale,
+            "note": note,
+        }
 
     mo = profile.get("mo_pct")
     mo_cls = classify(mo, cls["mo_pct"])
@@ -203,6 +210,23 @@ def _soil_place_section(location, profile: SoilProfile) -> None:
         row("ctc_t", "Capacidade de segurar nutrientes (CTC)", f"{_num(ctc, 1)} cmolc/dm³", CLASS_LABELS[ctc_cls],
             _CLASS_TONE[ctc_cls], _scale(ctc, reg("cec"), lambda v: _num(v, 1), "CTC maior")),
     ]
+    return rows, assumed
+
+
+def _soil_place_section(location, profile: SoilProfile) -> None:
+    theme.label("O solo do lugar")
+    st.header("Como é o solo daqui", anchor=False)
+    st.markdown(
+        "Cada fator do solo comparado com a **região**: um quadrado de uns 55 km em volta do ponto, no mesmo mapa "
+        "(SoilGrids, camada de 0 a 20 cm). A faixa escura é onde fica a maior parte da região; o ponto terracota é o seu."
+    )
+    region = region_soil(location.latitude, location.longitude)
+    rows, assumed = _build_soil_compare_rows(profile, region)
+    if assumed:
+        st.info(
+            f"Itens marcados como **(assumido)** ({', '.join(assumed)}) usam valores típicos do semiárido "
+            "porque o satélite não os mede; informe os dados em **Se você tiver análise de solo** abaixo para substituí-los."
+        )
     if region is None:
         st.info("A comparação com a região está indisponível agora (serviço de mapas do SoilGrids fora do ar).")
     components.soil_compare(rows, key="solo_regiao")

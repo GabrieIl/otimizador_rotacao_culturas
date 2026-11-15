@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date, timedelta
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
@@ -169,5 +170,125 @@ def test_load_zarc_table_from_csv(tmp_path) -> None:
 def test_zarc_missing_csv_raises(tmp_path) -> None:
     from crop_optimizer.ingestion.zarc_tabua import ZarcDataUnavailable
 
-    with pytest.raises(ZarcDataUnavailable):
+    with (
+        patch("crop_optimizer.ingestion.zarc_tabua.httpx.Client", side_effect=RuntimeError("offline")),
+        pytest.raises(ZarcDataUnavailable, match="Não foi possível baixar"),
+    ):
         load_zarc_table(["2914604"], get_settings(tmp_path))
+
+
+def _sample_zarc_csv_bytes() -> bytes:
+    header = (
+        "Nome_cultura;SafraIni;SafraFin;Cod_Cultura;Cod_Ciclo;Cod_Solo;geocodigo;UF;municipio;"
+        "Cod_Clima;Nome_Clima;Cod_Outros_Manejos;Nome_Outros_Manejos;Produtividade;Cod_NM;"
+        "Cod_Munic;Cod_Meso;Cod_Micro;Portaria;" + ";".join(DEC_COLUMNS)
+    )
+
+    def row(cultura: str, geo: str, uf: str, mun: str, decs: dict[int, int]) -> str:
+        vals = ";".join(str(decs.get(i, 0)) for i in range(1, 37))
+        return f"{cultura};2026;2027;1;20;2;{geo};{uf};{mun};0;x;1;Sequeiro;;;1;1;1;Port.1;{vals}"
+
+    lines = [
+        header,
+        row("Sorgo Forrageiro", "2914604", "BA", "Irecê", {33: 40, 34: 30, 1: 40}),
+        row("Milho 1ª Safra", "2311306", "CE", "Quixadá", {5: 20, 6: 30}),
+        row("Feijão Caupi", "2601102", "PE", "Araripina", {4: 20, 5: 20, 6: 30}),
+    ]
+    return ("\ufeff" + "\r\n".join(lines) + "\r\n").encode("utf-8")
+
+
+def test_zarc_auto_download_and_region_switch(tmp_path) -> None:
+    from crop_optimizer.analytics.rain_delay import fetch_location_zarc
+    from crop_optimizer.domain.models import LocationSpec
+    from crop_optimizer.ingestion.zarc_tabua import zarc_decendios_for_crops
+
+    settings = get_settings(tmp_path)
+    cfg = load_yaml_config("zarc")
+    csv_bytes = _sample_zarc_csv_bytes()
+
+    mock_stream_resp = MagicMock()
+    mock_stream_resp.raise_for_status.return_value = None
+    mock_stream_resp.headers = {"content-type": "text/csv; charset=utf-8"}
+    mock_stream_resp.iter_bytes.return_value = [csv_bytes[:80], csv_bytes[80:]]
+
+    stream_ctx = MagicMock()
+    stream_ctx.__enter__.return_value = mock_stream_resp
+    client_inst = MagicMock()
+    client_inst.stream.return_value = stream_ctx
+
+    with patch("crop_optimizer.ingestion.zarc_tabua.httpx.Client") as mock_client:
+        mock_client.return_value.__enter__.return_value = client_inst
+        table = load_zarc_table(["2914604"], settings)
+        assert set(table["decendio"].to_list()) == {33, 34, 1}
+        assert (settings.paths.bronze_source("zarc") / cfg["arquivo"]).exists()
+
+        # Troca para outra região (ex.: roça marcada em Araripina/PE) reutiliza o CSV sem baixar de novo
+        client_inst.stream.reset_mock()
+        loc_roca = LocationSpec(
+            location_id="roca_test",
+            ibge_code="2601102",
+            name="Araripina",
+            state="PE",
+            biome="",
+            latitude=-7.57,
+            longitude=-40.49,
+        )
+        rep = fetch_location_zarc(loc_roca, date(2026, 1, 1), date(2026, 2, 15), settings)
+        assert rep.zarc_error is None
+        caupi = next(w for w in rep.crop_windows if w.crop_id == "feijao_caupi")
+        assert caupi.state == "aberta"
+        assert rep.decendios_by_crop["feijao_caupi"][3] == 20
+        client_inst.stream.assert_not_called()
+
+    # Garante que decendios helper também lê corretamente
+    decs = zarc_decendios_for_crops(load_zarc_table(["2601102"], settings), "2601102")
+    assert decs["feijao_caupi"][5] == 30
+
+
+def test_zarc_ckan_fallback_and_html_rejection(tmp_path) -> None:
+    from crop_optimizer.ingestion.zarc_tabua import ZarcDataUnavailable
+
+    settings = get_settings(tmp_path)
+    cfg = load_yaml_config("zarc")
+    csv_bytes = _sample_zarc_csv_bytes()
+
+    html_resp = MagicMock()
+    html_resp.raise_for_status.return_value = None
+    html_resp.headers = {"content-type": "text/html"}
+    html_ctx = MagicMock()
+    html_ctx.__enter__.return_value = html_resp
+
+    csv_resp = MagicMock()
+    csv_resp.raise_for_status.return_value = None
+    csv_resp.headers = {"content-type": "text/csv"}
+    csv_resp.iter_bytes.return_value = [csv_bytes]
+    csv_ctx = MagicMock()
+    csv_ctx.__enter__.return_value = csv_resp
+
+    ckan_resp = MagicMock()
+    ckan_resp.raise_for_status.return_value = None
+    ckan_resp.json.return_value = {
+        "result": {"resources": [{"name": cfg["arquivo"], "format": "CSV", "url": "https://dados.exemplo/zarc.csv"}]}
+    }
+
+    client_inst = MagicMock()
+    client_inst.stream.side_effect = [html_ctx, csv_ctx]
+    client_inst.get.return_value = ckan_resp
+
+    with patch("crop_optimizer.ingestion.zarc_tabua.httpx.Client") as mock_client:
+        mock_client.return_value.__enter__.return_value = client_inst
+        table = load_zarc_table(["2311306"], settings)
+        assert set(table["decendio"].to_list()) == {5, 6}
+
+    # Se até o fallback falhar com HTML, não deixa arquivo .part e levanta erro claro
+    settings_fail = get_settings(tmp_path / "fail")
+    client_fail = MagicMock()
+    client_fail.stream.return_value = html_ctx
+    client_fail.get.return_value = ckan_resp
+    with (
+        patch("crop_optimizer.ingestion.zarc_tabua.httpx.Client") as mock_client,
+        pytest.raises(ZarcDataUnavailable, match="HTML"),
+    ):
+        mock_client.return_value.__enter__.return_value = client_fail
+        load_zarc_table(["2311306"], settings_fail)
+    assert not list(settings_fail.paths.bronze_source("zarc").glob("*.part"))

@@ -1,10 +1,13 @@
 # Zoneamento Agrícola de Risco Climático (MAPA/Embrapa) — tábua de risco em dados abertos.
 # Fonte: https://dados.agricultura.gov.br/dataset/tabua-de-risco-zoneamento-agricola-de-risco-climatico
-# O CSV é baixado manualmente e guardado sem alteração em data/bronze/zarc/.
+# Se o CSV não estiver em data/bronze/zarc/, o app tenta baixá-lo automaticamente da fonte oficial.
 
 arquivo: "dados-abertos-tabua-de-risco-safra-2026-2027.csv"
 safra: "2026/2027"
 manejo: "Sequeiro"
+url: "https://dados.agricultura.gov.br/dataset/6d3d141c-885e-41a4-ab7f-dc8ff323b96f/resource/139e5a60-1f43-4cc8-aeab-a35dbbf816c0/download/dados-abertos-tabua-de-risco-safra-2026-2027.csv"
+url_ckan: "https://dados.agricultura.gov.br/api/3/action/package_show?id=6d3d141c-885e-41a4-ab7f-dc8ff323b96f"
+timeout_segundos: 120
 
 # Cultura do motor -> Nome_cultura na tábua do ZARC.
 # Palma forrageira e capim-buffel não constam na tábua anual.
@@ -12,3 +15,19 @@ culturas:
   milho_sertanejo: "Milho 1ª Safra"     # CONFERIR
   feijao_caupi: "Feijão Caupi"          # CONFERIR
   sorgo_forrageiro: "Sorgo Forrageiro"  # CONFERIR
+
+# Grupamento textural do solo -> códigos Cod_Solo aceitos na tábua do ZARC:
+# culturas tradicionais usam Tipo 1/2/3 ("1", "2", "3");
+# culturas já convertidas para Água Disponível (ex.: Milho) usam AD1-AD6 ("11".."16").
+solo_grupos:
+  arenosa: ["1", "11", "12"]            # CONFERIR: Tipo 1 / AD1-AD2
+  media: ["2", "13", "14"]              # CONFERIR: Tipo 2 / AD3-AD4
+  argilosa: ["3", "15"]                 # CONFERIR: Tipo 3 / AD5
+  muito_argilosa: ["3", "16"]           # CONFERIR: Tipo 3 / AD6
+
+# Rótulos dos grupos de ciclo presentes na coluna Cod_Ciclo do ZARC.
+ciclos:
+  "20": "Grupo I (Precoce)"             # CONFERIR
+  "21": "Grupo II (Médio)"              # CONFERIR
+  "22": "Grupo III (Tardio)"            # CONFERIR
+  "24": "Grupo IV"                      # CONFERIR

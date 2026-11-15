@@ -1,10 +1,11 @@
 # Descobrir o município de uma coordenada (para cruzar com o ZARC).
 
 nominatim:
-  # Geocodificação reversa do OpenStreetMap. Política de uso: no máximo 1 pedido/s,
-  # User-Agent identificando o app e cache das respostas.
+  # Geocodificação reversa e busca por nome/CEP do OpenStreetMap. Política de uso: no máximo
+  # 1 pedido/s, User-Agent identificando o app e cache das respostas.
   # https://operations.osmfoundation.org/policies/nominatim/
   url: "https://nominatim.openstreetmap.org/reverse"
+  search_url: "https://nominatim.openstreetmap.org/search"
   user_agent: "acaua-hackathon/0.1 (NASA Space Apps 2026)"
   zoom: 10            # 10 = nível de município
   timeout_segundos: 30
