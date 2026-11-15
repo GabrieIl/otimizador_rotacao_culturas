@@ -31,3 +31,8 @@ veranico:
   dias_minimos: 10              # CONFERIR: a partir de quantos dias secos seguidos conta como veranico
   janela_apos_inicio_dias: 90   # CONFERIR: período da lavoura depois da chuva firmar
   aviso_dias_secos: 5           # na safra em curso, avisar a partir de N dias sem chuva
+
+# Ícone de chuva no calendário, pelo total do dia (fraca abaixo de moderada; forte a partir de forte).
+calendario:
+  chuva_moderada_mm: 10.0       # CONFERIR
+  chuva_forte_mm: 25.0          # CONFERIR
