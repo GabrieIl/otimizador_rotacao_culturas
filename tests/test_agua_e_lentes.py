@@ -149,11 +149,11 @@ def test_water_block_text() -> None:
 
     hold = agua.HoldDays("milho_sertanejo", 6, 38.5, 70.0, 6.2, 1.0, False)
     today = agua.SoilWaterToday(date(2026, 11, 11), 0.1, 0.12, 47.0, 70.0, 38.5)
-    block = _water_block("milho_sertanejo", "Milho", {"milho_sertanejo": (hold, today)}, 14, "arenosa", None)
+    block = _water_block("milho_sertanejo", "Milho", {"milho_sertanejo": (hold, today, None)}, 14, "arenosa", None)
     assert [b["days"] for b in block["bars"]] == [14, 6] and block["bars"][1]["tone"] == "curto"
     assert block["phrase"].startswith("O veranico daqui costuma passar do que o milho aguenta: 14 dias contra 6. ")
     assert "6,2 mm por dia." in block["phrase"] and "Profundidade do solo não informada" in block["phrase"]
     assert "Faltam cerca de 45 mm" in block["solo"]["text"]
     palma = agua.HoldDays("palma_forrageira", None, 0, 0, 0, 0, False)
     assert "raquete" in _water_block("palma_forrageira", "Palma forrageira",
-                                     {"palma_forrageira": (palma, None)}, 14, "arenosa", None)["phrase"]
+                                     {"palma_forrageira": (palma, None, None)}, 14, "arenosa", None)["phrase"]

@@ -1,0 +1,67 @@
+# Registro das culturas do Acauã: grupo, manejo e o que o motor de sequeiro precisa.
+#
+# Cada cultura também precisa de uma entrada em:
+#   config/aptidao.yaml  -> culturas (nome e exigências de solo), bases_por_cultura, descricao_culturas
+#   config/agua.yaml     -> culturas (Kc, raiz, p e fases da FAO-56)
+#   config/zarc.yaml     -> culturas (só se a tábua do ZARC tiver a cultura)
+#   app/icons.py         -> ícone SVG
+#   domain/presets.py    -> CropSpec (só manejo "sequeiro": é o que o motor de risco usa)
+# O teste tests/test_culturas_conectadas.py confere tudo isso.
+#
+# manejo:
+#   sequeiro -> o aviso usa o risco de quebra pela chuva (motor Monte Carlo) e o ZARC
+#   irrigado -> no semiárido só vai com rega: o aviso mostra o intervalo de rega e a água do ciclo
+# chuva_ciclo_mm: chuva da estação a partir da qual o motor não vê falta de água (só sequeiro).
+#   Os valores de milho, caupi, sorgo, palma e buffel são os que o motor já usava.
+#   Os novos seguem a mesma escala (~0,85-0,9 do limite inferior da necessidade da FAO-33). # CONFERIR
+# feminino: o nome pede "a" (a mandioca, a alface).
+# sensibilidade_seca: escala do motor (milho 1,48 com Ky 1,25 da FAO-33). Novos = ~1,18 x Ky. # CONFERIR
+
+grupos:
+  graos: "Grãos e leguminosas"
+  forrageiras: "Forrageiras"
+  raizes: "Raízes e tubérculos"
+  folhas: "Hortaliças de folha e tempero"
+  alto_valor: "Hortaliças de alto valor"
+  frutas: "Frutas"
+
+culturas:
+  # --- já existentes -----------------------------------------------------------------
+  milho_sertanejo: {grupo: graos, manejo: sequeiro, chuva_ciclo_mm: 430}
+  feijao_caupi: {grupo: graos, manejo: sequeiro, chuva_ciclo_mm: 270, leguminosa: true}
+  sorgo_forrageiro: {grupo: forrageiras, manejo: sequeiro, chuva_ciclo_mm: 270}
+  palma_forrageira: {feminino: true, grupo: forrageiras, manejo: sequeiro, chuva_ciclo_mm: 160, perene: true}
+  capim_buffel: {grupo: forrageiras, manejo: sequeiro, chuva_ciclo_mm: 160, perene: true}
+
+  # --- grãos e leguminosas (em consórcio) ----------------------------------------------
+  feijao_comum:   # Phaseolus vulgaris; FAO-33: 300-500 mm, Ky 1,15
+    {grupo: graos, manejo: sequeiro, chuva_ciclo_mm: 290, sensibilidade_seca: 1.35, leguminosa: true}  # CONFERIR
+  fava:           # Phaseolus lunatus; mais rústica e de ciclo mais longo que o feijão comum
+    {feminino: true, grupo: graos, manejo: sequeiro, chuva_ciclo_mm: 320, sensibilidade_seca: 1.05, leguminosa: true}  # REVISAR AGRÔNOMO
+
+  # --- raízes e tubérculos ---------------------------------------------------------------
+  mandioca:       # muito tolerante à seca: perde folha e espera a chuva ("poupança na terra")
+    {feminino: true, grupo: raizes, manejo: sequeiro, chuva_ciclo_mm: 400, sensibilidade_seca: 0.70, perene: true}  # REVISAR AGRÔNOMO
+  batata_doce:    # FAO-33: ~500 mm; tolera seca depois de enraizada
+    {feminino: true, grupo: raizes, manejo: sequeiro, chuva_ciclo_mm: 380, sensibilidade_seca: 1.10}  # REVISAR AGRÔNOMO
+  cenoura: {feminino: true, grupo: raizes, manejo: irrigado}
+
+  # --- hortaliças de folha e tempero (canteiro com rega) ---------------------------------
+  alface: {feminino: true, grupo: folhas, manejo: irrigado}
+  rucula: {feminino: true, grupo: folhas, manejo: irrigado}
+  coentro: {grupo: folhas, manejo: irrigado}
+  cebolinha: {feminino: true, grupo: folhas, manejo: irrigado}
+  espinafre: {grupo: folhas, manejo: irrigado}
+  rabanete: {grupo: folhas, manejo: irrigado}
+
+  # --- hortaliças de alto valor (rega, e muitas vezes sombrite ou estufa) ----------------
+  tomate: {grupo: alto_valor, manejo: irrigado}
+  pimentao: {grupo: alto_valor, manejo: irrigado}
+  pimenta: {feminino: true, grupo: alto_valor, manejo: irrigado}
+  morango: {grupo: alto_valor, manejo: irrigado}
+
+  # --- frutas (no semiárido, com rega) -----------------------------------------------------
+  maracuja: {grupo: frutas, manejo: irrigado, perene: true}
+  mamao: {grupo: frutas, manejo: irrigado, perene: true}
+  banana: {feminino: true, grupo: frutas, manejo: irrigado, perene: true}
+  limao: {grupo: frutas, manejo: irrigado, perene: true}

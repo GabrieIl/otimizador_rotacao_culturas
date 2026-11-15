@@ -7,8 +7,12 @@ safra: "2026/2027"
 manejo: "Sequeiro"
 
 # Cultura do motor -> Nome_cultura na tábua do ZARC.
-# Palma forrageira e capim-buffel não constam na tábua anual.
+# Esta tábua de dados abertos só traz grãos anuais. Fora dela: palma, buffel, fava, mandioca,
+# batata-doce, hortaliças e frutas (o ZARC de mandioca e de frutas sai em portarias à parte).
 culturas:
   milho_sertanejo: "Milho 1ª Safra"     # CONFERIR
   feijao_caupi: "Feijão Caupi"          # CONFERIR
   sorgo_forrageiro: "Sorgo Forrageiro"  # CONFERIR
+  # Feijão comum (Phaseolus). "Feijão 2ª Safra" também existe na tábua (Quixadá e Sousa em sequeiro);
+  # qual das duas vale para o plantio das águas no semiárido: REVISAR AGRÔNOMO
+  feijao_comum: "Feijão"                # CONFERIR
