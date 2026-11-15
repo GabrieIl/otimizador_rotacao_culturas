@@ -39,9 +39,9 @@ def build_whatsapp_summary_message(
         + (f"Olá, *{farmer_name}*!\n\n" if farmer_name else "Olá!\n\n")
         + f"*Semáforo da Chuva ({delay_days}d de atraso):*\n"
         f"Sinal {traffic_light.label.lower()}: *{traffic_light.guidance}*\n\n"
-        f"*Placar em 10 anos:*\n"
-        f"• {traditional_result.strategy.short_name}: perde a roça em *{traditional_result.loss_years_of_10} de 10* anos\n"
-        f"• {resilient_result.strategy.short_name}: sobrevive *{resilient_result.survival_score_of_10} de 10* anos "
+        f"*Anos de colheita em 10:*\n"
+        f"• {traditional_result.strategy.short_name}: quebra de safra em *{traditional_result.loss_years_of_10} de 10* anos\n"
+        f"• {resilient_result.strategy.short_name}: colhe em *{resilient_result.survival_score_of_10} de 10* anos "
         f"({f'{resilient_result.expected_forage_kg_ha_year:,.0f}'.replace(',', '.')} kg/ha de forragem)\n\n"
         f"Ouça o áudio do *Rádio do Tempo* anexo ou peça a Ficha Técnica ao técnico da EMATER."
     )

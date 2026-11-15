@@ -298,6 +298,7 @@ class MonteCarloRotationEngine:
                 "final_nitrogen_mean": float(np.mean(soil_out.nitrogen_kg_ha[:, -1])),
                 "final_om_mean": float(np.mean(soil_out.organic_matter_pct[:, -1])),
                 "annual_loss_prob": mean_annual_loss_rate,
+                "annual_profit_mean": float(np.mean(annual_profit)),
             },
         )
 

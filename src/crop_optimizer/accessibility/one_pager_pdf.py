@@ -91,18 +91,18 @@ def generate_one_pager_pdf(
         ).replace(",", "."),
     )
 
-    # Bloco 2: Placar de Sobrevivência & Biomassa
+    # Bloco 2: Anos de colheita e produção
     pdf.set_xy(10, 54)
     pdf.set_font("Helvetica", "B", 11)
-    pdf.cell(190, 6, _latin1_safe("2. Placar de Sobrevivencia & Balanco de Biomassa (Comida x Forragem x Risco)"))
+    pdf.cell(190, 6, _latin1_safe("2. Anos de colheita e producao (graos x forragem x estabilidade)"))
 
     # Cabeçalho da tabela
     pdf.set_xy(10, 62)
     pdf.set_fill_color(241, 245, 249)
     pdf.set_font("Helvetica", "B", 8.5)
     col_widths = [58, 28, 30, 26, 26, 22]
-    risk_header = "2 Anos Perda" if config.horizon_years >= 2 else "Perda no ano"
-    headers = ["Rotacao", "Sobrevive/10", risk_header, "Comida (kg/ha)", "Forragem (kg)", "VPL (R$/ha)"]
+    risk_header = "2 quebras seg." if config.horizon_years >= 2 else "Quebra no ano"
+    headers = ["Rotacao", "Colhe/10", risk_header, "Graos (kg/ha)", "Forragem (kg)", "VPL (R$/ha)"]
     for w, h in zip(col_widths, headers, strict=True):
         pdf.cell(w, 7, _latin1_safe(h), border=1, fill=True, align="C")
     pdf.ln()
@@ -138,7 +138,7 @@ def generate_one_pager_pdf(
         190,
         5,
         _latin1_safe(
-            f"- Melhor escudo ({best.strategy.short_name or best.strategy.name}): "
+            f"- Mais estavel ({best.strategy.short_name or best.strategy.name}): "
             f"{loss_risk_label(config.horizon_years)} cai de {worst.prob_two_consecutive_losses*100:.1f}% "
             f"para {best.prob_two_consecutive_losses*100:.1f}%; "
             f"score final do solo {best.final_soil_score_mean:.2f}/4.0 e economia de R$ {best.total_fertilizer_savings_mean:,.0f}/ha."

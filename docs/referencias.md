@@ -113,6 +113,20 @@ exemplos; falta conferir no manual.
 | **Textura** | Grupamentos do SiBCS: arenosa (areia e areia franca), média, argilosa (35-60% de argila), muito argilosa (> 60%). SANTOS, H. G. et al. *Sistema Brasileiro de Classificação de Solos*. 5. ed. Embrapa, 2018. ❌ Citação de memória. "Arenosa" foi aproximada como areia − argila ≥ 70% (REVISAR AGRÔNOMO). |
 | **Declividade** | Método de Horn (janela 3x3): HORN, B. K. P. Hill shading and the reflectance map. *Proceedings of the IEEE*, v. 69, n. 1, 1981. ❌ Citação de memória. |
 
+### 1.9 FAO-56: ET0, água disponível e dias que a lavoura aguenta
+
+ALLEN, R. G.; PEREIRA, L. S.; RAES, D.; SMITH, M. *Crop evapotranspiration: guidelines for computing crop
+water requirements*. FAO Irrigation and Drainage Paper 56. Roma: FAO, 1998.
+<https://www.fao.org/4/x0490e/x0490e00.htm>
+
+| Onde | O quê |
+|---|---|
+| `analytics/agua.py` | Ra pela latitude e dia do ano (eq. 21), ET0 de Hargreaves (eq. 52), TAW = CAD x Zr (eq. 82), RAW = p x TAW (eq. 83), Ks e balanço de um reservatório (cap. 8). Teste: Ra do exemplo 8 (20° S, 3/set = 32,2 MJ m⁻² dia⁻¹). |
+| `config/agua.yaml` | Kc (tabela 12), Zr e p (tabela 22), fases (tabela 11) de milho, caupi e sorgo; "pastagem extensiva" para o buffel. `# CONFERIR` |
+
+HARGREAVES, G. H.; SAMANI, Z. A. Reference crop evapotranspiration from temperature. *Applied Engineering
+in Agriculture*, v. 1, n. 2, p. 96-99, 1985. ❌ Citação de memória (a FAO-56 reproduz a equação).
+
 ---
 
 ## 2. Métodos avaliados e não adotados
@@ -295,6 +309,33 @@ Camadas usadas (identificador e título conforme o catálogo do GIBS). O produto
 | **Atribuição** | As fontes e licenças de cada dado estão na página do dataset. Falta registrar o texto de atribuição exigido. |
 | **Conferido** | ✅ Tile real em 14/11/2026 (Casa Nova: 398 a 489 m no tile). |
 
+### 3.10 NASA POWER: temperatura do ar (`T2M_MAX`, `T2M_MIN`)
+
+| | |
+|---|---|
+| **Quem é a fonte** | NASA POWER (MERRA-2/GEOS-IT), a mesma API da chuva (seção 3.1). |
+| **O que tem** | Temperatura máxima e mínima diária a 2 m, °C, desde 1981; -999 = sem dado. |
+| **Onde no código** | `ingestion/power_temperature.py` -> ET0 de Hargreaves em `analytics/agua.py`; cache em `data/bronze/nasa_power/`. |
+| **Conferido** | ✅ Petrolina, Quixadá e Sousa em 15/11/2026 (ET0 média de 5,4 a 5,7 mm/dia). |
+
+### 3.11 NASA GIBS: valor da camada no ponto (cor do pixel -> legenda)
+
+| | |
+|---|---|
+| **Endpoint da imagem** | `https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap&LAYERS=<camada>&CRS=EPSG:4326&BBOX=<s,w,n,e>&WIDTH=9&HEIGHT=9&FORMAT=image/png&TIME=<data>` (sem login). Com 1x1 pixel o GIBS devolve transparente; com 9x9, lemos o pixel do meio. |
+| **Legenda** | `https://gibs.earthdata.nasa.gov/colormaps/v1.3/<colormap>.xml`: cada cor com a faixa de valor e a unidade. |
+| **Camadas usadas** | `SMAP_L4_Analyzed_Root_Zone_Soil_Moisture` (m³/m³, 2015-), `MODIS_Terra_L3_NDVI_16Day` (2000-), `MODIS_Terra_L3_Land_Surface_Temp_8Day_Day` (K, 2000-). |
+| **Onde no código** | `ingestion/gibs_values.py` -> `analytics/lens_insights.py`; cache em `data/bronze/gibs_colormaps/` e `data/bronze/gibs_pixels/`. |
+| **Alternativa avaliada** | ORNL DAAC MODIS/VIIRS Subsets API (`https://modis.ornl.gov/rst/api/v1/`), sem login, com o valor exato e também o SMAP L3 (`SPL3SMP_E`). Ficou de fora por levar ~50 s por consulta. |
+| **Conferido** | ✅ Petrolina em 15/11/2026: SMAP 0,073 m³/m³ (10/nov), NDVI 0,25 (16/out), LST 313,7 K (26/fev/2020). |
+
+### 3.12 MapBiomas (avaliado, não usado)
+
+Cobertura anual (Coleção 8) e Solo (carbono, Coleção 3). O endereço público
+`storage.googleapis.com/mapbiomas-public/.../brasil_coverage_2022.tif` devolveu **403** em 15/11/2026, e
+listar o bucket pede login (401). Ler GeoTIFF exigiria `rasterio`, fora da lista de dependências. Além disso,
+a classificação ano a ano não distingue um pousio curto de pasto, então "anos sem descanso" não se sustenta.
+
 ---
 
 ## 4. Bases de dados candidatas (ainda não usadas)
@@ -377,6 +418,10 @@ por cálculo.
 | `ingestion/nasa_power.py` | Perfis do clima sintético (`_REGIONAL_CLIMATE_PROFILE`). |
 | `ingestion/embrapa_zarc.py` | Janelas "ZARC" geradas (não são o ZARC). |
 | `config/chuva.yaml` | Limiares de Sivakumar aplicados ao semiárido brasileiro sem calibração local (`# CONFERIR`). |
+| `config/colheita.yaml` | Régua da quebra de safra: colher menos da metade do normal (REVISAR AGRÔNOMO). |
+| `config/agua.yaml` | Parâmetros do buffel e da palma, NDVI de vegetação seca (0,30), limite de 40 °C na floração. |
+| `config/lentes.yaml` | Textos do risco de enxurrada por classe de relevo (REVISAR AGRÔNOMO). |
+| `domain/presets.py` | Preços e custos usados na **Renda** (não são cotação). |
 
 ---
 

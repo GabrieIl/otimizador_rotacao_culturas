@@ -71,18 +71,35 @@ def rank_by_survival(results: list[StrategySimulationResult]) -> list[StrategySi
     )
 
 
+# pesos de (grãos, forragem, estabilidade, renda) por prioridade
 _PRIORITY_WEIGHTS = {
-    BalancePriority.COMIDA: (0.60, 0.15, 0.25),
-    BalancePriority.FORRAGEM: (0.15, 0.60, 0.25),
-    BalancePriority.ESCUDO: (0.20, 0.20, 0.60),
-    BalancePriority.EQUILIBRADO: (0.34, 0.33, 0.33),
+    BalancePriority.EQUILIBRADO: (0.25, 0.25, 0.25, 0.25),
+    BalancePriority.COMIDA: (0.55, 0.10, 0.20, 0.15),
+    BalancePriority.FORRAGEM: (0.10, 0.55, 0.20, 0.15),
+    BalancePriority.ESCUDO: (0.15, 0.15, 0.55, 0.15),
+    BalancePriority.RENDA: (0.15, 0.10, 0.20, 0.55),
 }
 
 
-def balance_score(result: StrategySimulationResult, priority: BalancePriority) -> float:
-    """Nota 0-100 da rotação com os pesos da prioridade (comida, forragem, escudo)."""
-    w_food, w_forage, w_shield = _PRIORITY_WEIGHTS[priority]
-    return (w_food * result.food_score) + (w_forage * result.forage_score) + (w_shield * result.shield_score)
+def annual_profit(result: StrategySimulationResult) -> float:
+    """Renda líquida média por ano (R$/ha), com os preços e custos de referência do motor."""
+    return float(result.metadata.get("annual_profit_mean", 0.0))
+
+
+def income_scores(results: list[StrategySimulationResult]) -> dict[int, float]:
+    """Nota 0-100 da renda, relativa às rotações comparadas (a melhor = 100, a pior = 0)."""
+    values = {id(r): annual_profit(r) for r in results}
+    low, high = min(values.values(), default=0.0), max(values.values(), default=0.0)
+    if high - low < 1e-9:
+        return {k: 50.0 for k in values}
+    return {k: 100.0 * (v - low) / (high - low) for k, v in values.items()}
+
+
+def balance_score(result: StrategySimulationResult, priority: BalancePriority, income_score: float = 50.0) -> float:
+    """Nota 0-100 da rotação com os pesos da prioridade (grãos, forragem, estabilidade, renda)."""
+    w_food, w_forage, w_shield, w_income = _PRIORITY_WEIGHTS[priority]
+    return (w_food * result.food_score + w_forage * result.forage_score + w_shield * result.shield_score
+            + w_income * income_score)
 
 
 def rank_by_balance_priority(
@@ -90,7 +107,8 @@ def rank_by_balance_priority(
     priority: BalancePriority = BalancePriority.EQUILIBRADO,
 ) -> list[tuple[StrategySimulationResult, float]]:
     """Todas as rotações, da melhor para a pior, com a nota da prioridade escolhida."""
-    scored = [(r, balance_score(r, priority)) for r in results]
+    income = income_scores(results)
+    scored = [(r, balance_score(r, priority, income[id(r)])) for r in results]
     return sorted(scored, key=lambda item: item[1], reverse=True)
 
 
@@ -98,5 +116,5 @@ def select_by_balance_priority(
     results: list[StrategySimulationResult],
     priority: BalancePriority = BalancePriority.EQUILIBRADO,
 ) -> StrategySimulationResult:
-    """Seleciona a rotação ideal conforme o peso escolhido na Balança Comida x Forragem x Escudo."""
+    """Seleciona a rotação ideal conforme o que pesa mais (grãos, forragem, estabilidade, renda)."""
     return rank_by_balance_priority(results, priority)[0][0]
