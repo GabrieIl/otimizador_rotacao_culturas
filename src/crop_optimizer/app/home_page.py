@@ -36,6 +36,7 @@ from crop_optimizer.app.state import arrived, store, stored
 from crop_optimizer.config import load_yaml_config
 from crop_optimizer.domain.soil_profile import (
     ATTRIBUTES,
+    DEPTH_FIELD,
     SoilProfile,
     clear_field_data,
     save_field_data,
@@ -127,8 +128,9 @@ def _rain_section(location, today: date) -> None:
         series, date(ytd.year, 1, 1), 12, today, rain_chance(loc_json, today),
         onset=s.onset_date, normal_onset=s.reference_date, veranicos=veranicos, wet_mm=crit.wet_day_mm,
     )
-    st.markdown("**Calendário da chuva.** O fundo de cada dia mostra a chance de chover naquela data (1991-2020); "
-                "o círculo marca os dias que de fato choveram. Passe o mouse num dia para ver os milímetros.")
+    st.markdown("**Calendário da chuva.** A cor de cada dia mostra a chance de chover naquela data (1991-2020): "
+                "quanto mais escuro, mais anos choveu. O ícone mostra se de fato choveu e quanto (fraca, moderada "
+                "ou forte). Use as setas para ver outros meses e passe o mouse num dia para ver os milímetros.")
     components.rain_calendar(
         months,
         {"inicio": s.onset_date is not None and s.onset_date.year == ytd.year,
@@ -344,6 +346,12 @@ def _field_form(location_id: str, profile: SoilProfile) -> None:
                     format=f"%.{digits}f",
                     key=f"campo_{location_id}_{attr}",
                 )
+            entered[DEPTH_FIELD] = cols[0].number_input(
+                "Profundidade do solo até a pedra (cm)",
+                min_value=0.0, max_value=300.0, value=profile.depth_cm, step=5.0, format="%.0f",
+                key=f"campo_{location_id}_{DEPTH_FIELD}",
+                help="Deixe vazio se o solo é fundo ou se não sabe. Solo raso segura menos água para a raiz.",
+            )
             nota = st.text_input("Observação (laboratório, data da coleta...)", key=f"campo_{location_id}_nota")
             c1, c2 = st.columns(2)
             if c1.form_submit_button("Salvar análise", type="primary"):
@@ -372,7 +380,7 @@ def home_page() -> None:
     _terrain_section(location, profile)
     theme.cta(
         "Com esse solo e essa chuva, o que plantar agora?",
-        "Veja o aviso do Acauã para cada cultura e qual rotação aguenta mais nos próximos anos.",
+        "Veja o aviso do Acauã para cada cultura e qual plano rende mais estável nos próximos anos.",
         "plantio",
         "Ver o que plantar agora",
     )

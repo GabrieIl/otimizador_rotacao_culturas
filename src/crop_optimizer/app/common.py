@@ -6,6 +6,7 @@ from datetime import date
 
 import streamlit as st
 
+from crop_optimizer.analytics import agua
 from crop_optimizer.analytics.rain_delay import (
     RainDelayReport,
     ZarcStatusReport,
@@ -19,6 +20,7 @@ from crop_optimizer.domain.presets import DEFAULT_LOCATIONS
 from crop_optimizer.domain.roca import Roca
 from crop_optimizer.domain.soil_profile import SoilProfile, build_profile, load_field_data
 from crop_optimizer.elt.pipeline import CropLakehouseEltPipeline
+from crop_optimizer.ingestion.power_temperature import fetch_temperature_series
 from crop_optimizer.ingestion.rain_history import RainSeries, fetch_rain_series
 from crop_optimizer.ingestion.soilgrids import SoilGridsUnavailable, fetch_soilgrids_nearby
 from crop_optimizer.ingestion.terrain import TerrainUnavailable, terrain_at
@@ -57,6 +59,29 @@ def rain_delay_report(
 @st.cache_data(show_spinner="Baixando a chuva do ponto (NASA POWER)...")
 def rain_series(location_json: str, today: date) -> RainSeries:
     return fetch_rain_series(LocationSpec.model_validate_json(location_json), today=today)
+
+
+@st.cache_data(show_spinner="Calculando a água da roça (chuva e temperatura do NASA POWER)...")
+def water_by_crop(location_json: str, as_of: date, texture_group: str, depth_m: float | None,
+                  crop_ids: tuple[str, ...]) -> dict[str, tuple[agua.HoldDays, agua.SoilWaterToday | None]]:
+    """Por cultura: quantos dias aguenta sem chuva na floração e a água no solo na data.
+
+    Levanta TemperatureUnavailable ou RainDataUnavailable se o NASA POWER falhar sem cache.
+    """
+    location = LocationSpec.model_validate_json(location_json)
+    rain = fetch_rain_series(location, today=max(as_of, date.today()))
+    temp = fetch_temperature_series(location, today=max(as_of, date.today()))
+    n = min(rain.dates.size, temp.dates.size)
+    dates, precip = rain.dates[:n], rain.precip_mm[:n]
+    et0 = agua.daily_et0(temp.dates[:n], temp.tmax_c[:n], temp.tmin_c[:n], location.latitude)
+    ref = rain_delay_report(location_json, as_of).status.reference
+    cad = agua.cad_mm_per_m(texture_group)
+    out = {}
+    for crop_id in crop_ids:
+        crop = agua.crop_water(crop_id)
+        hold = agua.hold_days(crop_id, cad, agua.critical_et0(dates, et0, ref, crop), depth_m)
+        out[crop_id] = (hold, agua.soil_water_today(dates, precip, et0, cad, crop_id, as_of, depth_m))
+    return out
 
 
 @st.cache_data(show_spinner="Lendo o solo e o relevo do ponto (SoilGrids + SRTM)...")

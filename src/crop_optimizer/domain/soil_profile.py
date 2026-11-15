@@ -33,6 +33,9 @@ ATTRIBUTES: dict[str, tuple[str, str, int]] = {
 }
 # o que nenhum satélite estima: só análise de campo
 FIELD_ONLY = ("p_mehlich", "k_mg_dm3", "v_pct")
+# Profundidade do solo até a pedra ou camada dura (cm). Só o produtor ou o técnico informa: o SoilGrids
+# não traz e o MapBiomas Solo exigiria ler GeoTIFF por um pacote novo. Sem ela, vale a raiz da cultura.
+DEPTH_FIELD = "profundidade_cm"
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,6 +55,11 @@ class SoilProfile:
     density_g_cm3: float | None = None
     warnings: list[str] = field(default_factory=list)
     field_date: str | None = None
+    depth_cm: float | None = None  # profundidade informada no campo; None = não informada
+
+    @property
+    def depth_m(self) -> float | None:
+        return None if self.depth_cm is None else self.depth_cm / 100.0
 
     def get(self, attr: str) -> float:
         return self.values[attr].value
@@ -116,6 +124,7 @@ def build_profile(
         density_g_cm3=density,
         warnings=list(warnings or []),
         field_date=(field_data or {}).get("data"),
+        depth_cm=field_values.get(DEPTH_FIELD),
     )
 
 
@@ -136,7 +145,7 @@ def load_field_data(location_id: str, settings: Settings | None = None) -> dict 
 def save_field_data(
     location_id: str, valores: dict[str, float | None], nota: str = "", settings: Settings | None = None
 ) -> dict:
-    clean = {k: float(v) for k, v in valores.items() if k in ATTRIBUTES and v is not None}
+    clean = {k: float(v) for k, v in valores.items() if (k in ATTRIBUTES or k == DEPTH_FIELD) and v is not None}
     data = {"valores": clean, "data": date.today().isoformat(), "nota": nota}
     _field_path(location_id, settings or get_settings()).write_text(
         json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"

@@ -237,6 +237,9 @@ seções 1.4 a 1.8). Detalhes em [features/03-perfil-do-local.md](features/03-pe
   a chuva do ano x média (seta verde/vermelha) e o calendário de chuva, o solo do lugar comparado com a região,
   o solo por cultura (cards + destaque) e o terreno. Detalhes em
   [features/06-paginas-interativas.md](features/06-paginas-interativas.md).
+- **Calendário de chuva (Início e Plantio):** 3 meses por vez, com setas dos lados. A cor do dia é a chance de
+  chover (5 faixas, de 0-1 a 8-10 de cada 10 anos) e o ícone mostra se choveu e quanto (fraca, moderada,
+  forte). Detalhes em [features/08-calendario-de-chuva.md](features/08-calendario-de-chuva.md).
 - **Plantio ("O que devo plantar agora?"):** seletor de cultura com a janela oficial do ZARC, o aviso da cultura
   (Pode plantar / Arriscado / Não plante / Espere) e o risco por atraso. Depois o porquê (calendário da safra,
   início da chuva e veranicos), o ranking das rotações (1 a 10 anos, conforme a prioridade, com "Detalhar") e a
@@ -248,10 +251,28 @@ seções 1.4 a 1.8). Detalhes em [features/03-perfil-do-local.md](features/03-pe
   na Início/Satélite). "Simular outra data", no topo e fechado, troca o dia usado no cálculo da chuva
   (útil para a demonstração fora da época). Ex.: Irecê em 20/12/2025 mostra chuva atrasada.
 - **Horizonte da simulação** (1, 2, 3 ou 5 anos) é um filtro em "Rotações" e vale só para os painéis
-  da simulação. Com 1 ano, o risco mostrado é "perder a safra no ano", não "2 anos seguidos".
+  da simulação. Com 1 ano, o risco mostrado é "quebra de safra no ano", não "2 quebras seguidas".
+- **Quebra de safra (régua única):** colher menos da metade do normal desta terra (`config/colheita.yaml`).
+  O aviso de cada cultura e o ranking das rotações usam o mesmo motor e essa mesma régua. O aviso é a cultura
+  sozinha por 1 ano. Ver [fixes/02-regua-unica-quebra-de-safra.md](fixes/02-regua-unica-quebra-de-safra.md).
 - **"Chuva da safra":** frase principal, quatro números (quando firmou, normal, atraso, atraso usado na
   simulação), fonte e critério na legenda, e janelas do ZARC.
 - **Semáforo e placar (abaixo):** usam o atraso calculado, mas o clima de fundo ainda é sintético (seção 2).
+
+---
+
+### Água da roça e frase das lentes (Feature 7)
+
+- **Dias que a terra segura a lavoura:** RAW / ETc na floração (FAO-56), com a textura do solo, a raiz da
+  cultura e a ET0 de Hargreaves da temperatura do NASA POWER. Aparece no aviso, ao lado do veranico típico, e
+  no ranking.
+- **Água no solo hoje:** balanço diário do solo nu com a chuva e a ET0 do NASA POWER. Mostra quantos mm faltam
+  para plantar.
+- **Satélite:** cada lente termina com "Na sua roça": uma frase com o número do ponto, lido da cor do pixel do
+  GIBS pela legenda oficial, e o link para onde ele é usado.
+- **Prioridades:** Produção de grãos, Forragem, Estabilidade, Renda e Equilíbrio. A renda usa preços fixos do
+  modelo.
+- Detalhes em [features/07-agua-e-insights.md](features/07-agua-e-insights.md).
 
 ---
 
@@ -269,6 +290,9 @@ seções 1.4 a 1.8). Detalhes em [features/03-perfil-do-local.md](features/03-pe
 | Forçar nova leitura do catálogo do GIBS | apague o XML do dia em `data/bronze/gibs/` |
 | Ajustar exigências das culturas e graus de limitação | `config/aptidao.yaml` (linhas `# REVISAR AGRÔNOMO`) |
 | Apagar a análise de campo de um local | botão "Apagar análise salva" na Início, ou o JSON em `data/campo/` |
+| Mudar a régua da quebra de safra | `config/colheita.yaml` (vale para o aviso e o ranking) |
+| Ajustar Kc, raiz (Zr) e p das culturas | `config/agua.yaml` (`# CONFERIR`) |
+| Forçar nova leitura de um valor de lente | apague o PNG em `data/bronze/gibs_pixels/<camada>/` |
 
 Comandos:
 

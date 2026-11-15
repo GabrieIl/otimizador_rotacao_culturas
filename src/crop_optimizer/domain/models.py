@@ -39,12 +39,16 @@ class TrafficLightLevel(StrEnum):
 
 
 class BalancePriority(StrEnum):
-    """Prioridade escolhida pelo agricultor na Balança Comida x Forragem x Risco."""
+    """O que pesa mais no plano do produtor: grãos, forragem, estabilidade ou renda.
+
+    Os valores antigos ("comida", "escudo") ficam para não quebrar escolhas guardadas.
+    """
 
     EQUILIBRADO = "equilibrado"
-    COMIDA = "comida"
+    COMIDA = "comida"  # produção de grãos
     FORRAGEM = "forragem"
-    ESCUDO = "escudo"
+    ESCUDO = "escudo"  # estabilidade: colher todo ano
+    RENDA = "renda"
 
 
 class SoilHealthState(int, Enum):
@@ -120,6 +124,12 @@ class RotationStrategy(BaseModel):
     tags: list[str] = Field(default_factory=list)
 
 
+def _harvest_failure_threshold() -> float:
+    from crop_optimizer.config import load_yaml_config
+
+    return float(load_yaml_config("colheita")["quebra_safra"]["limiar_colheita_relativa"])
+
+
 class SimulationConfig(BaseModel):
     """Parâmetros de execução da simulação estocástica de sobrevivência."""
 
@@ -140,6 +150,8 @@ class SimulationConfig(BaseModel):
     # Fator de produtividade do solo por cultura (crop_id -> fator), relativo ao solo típico do
     # semiárido (analytics/soil_suitability.py). Cultura ausente = 1.0.
     soil_crop_factors: dict[str, float] = Field(default_factory=dict)
+    # Quebra de safra = colheita relativa abaixo deste limiar (config/colheita.yaml).
+    harvest_failure_threshold: float = Field(default_factory=lambda: _harvest_failure_threshold(), gt=0.0, lt=1.0)
 
 
 @dataclass(slots=True)
@@ -182,4 +194,6 @@ class StrategySimulationResult:
     total_fertilizer_savings_mean: float
     execution_ms: float
     is_pareto_optimal: bool = False
+    # Colheita relativa por ano (cenários x anos): média das culturas do ano, 1.0 = ano sem falta de água.
+    relative_harvest: np.ndarray | None = None
     metadata: dict[str, float] = field(default_factory=dict)

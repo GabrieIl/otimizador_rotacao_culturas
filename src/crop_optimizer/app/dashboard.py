@@ -45,6 +45,7 @@ from crop_optimizer.app.common import (
     rain_chance,
     rain_series,
     soil_profile,
+    water_by_crop,
 )
 from crop_optimizer.app.common import lakehouse_catalog as _get_lakehouse_catalog
 from crop_optimizer.app.common import rain_delay_report as _rain_delay_report
@@ -58,9 +59,10 @@ from crop_optimizer.domain.models import BalancePriority, SimulationConfig, Soil
 from crop_optimizer.domain.presets import DEFAULT_STRATEGIES
 from crop_optimizer.domain.roca import Roca, nearest_preset
 from crop_optimizer.engine import MonteCarloRotationEngine, compute_pareto_frontier
-from crop_optimizer.engine.pareto import rank_by_balance_priority
+from crop_optimizer.engine.pareto import annual_profit, rank_by_balance_priority
 from crop_optimizer.engine.rain_onset import OnsetCriteria, season_start_for
 from crop_optimizer.ingestion.geocode import GeocodeUnavailable, resolve_place
+from crop_optimizer.ingestion.power_temperature import TemperatureUnavailable
 from crop_optimizer.ingestion.rain_history import RainDataUnavailable
 from crop_optimizer.ingestion.zarc_tabua import (
     cycle_label,
@@ -75,13 +77,63 @@ DEFAULT_HORIZON = 5
 _TONE_PILL = {"verde": "Pode plantar", "amarelo": "Arriscado", "vermelho": "Não plante", "espera": "Espere"}
 _PRIORITY = {
     BalancePriority.EQUILIBRADO: "Equilíbrio",
-    BalancePriority.COMIDA: "Comida na mesa",
-    BalancePriority.FORRAGEM: "Salvar o rebanho",
-    BalancePriority.ESCUDO: "Evitar anos de perda",
+    BalancePriority.COMIDA: "Produção de grãos",
+    BalancePriority.FORRAGEM: "Forragem",
+    BalancePriority.ESCUDO: "Estabilidade",
+    BalancePriority.RENDA: "Renda",
 }
 
 
 RainOverride = tuple[str, float, float, float, float]
+
+
+def _round5(mm: float) -> int:
+    return max(5, int(5 * round(mm / 5)))
+
+
+def _water_block(crop_id: str, crop_name: str, water: dict | None, veranico_days: int | None,
+                 texture_group: str, depth_cm: float | None) -> dict | None:
+    """Bloco "água" do aviso: dias que a lavoura aguenta x veranico típico, e a água no solo hoje."""
+    if water is None or crop_id not in water:
+        return None
+    hold, today = water[crop_id]
+    nome = crop_name.lower()
+    o_nome = f"{'a' if nome.startswith('palma') else 'o'} {nome}"
+    bars = []
+    if veranico_days:
+        bars.append({"label": "Veranico típico daqui", "days": veranico_days, "tone": "veranico"})
+    if hold.days is None:
+        phrase = (f"A {nome} guarda água na própria raquete e atravessa veranicos longos: "
+                  "a conta de dias sem chuva não se aplica a ela.")
+    else:
+        short = veranico_days is not None and hold.days < veranico_days
+        bars.append({"label": f"Quanto {o_nome} aguenta", "days": hold.days,
+                     "tone": "curto" if short else ("ok" if veranico_days else "neutro")})
+        if veranico_days is None:
+            head = f"Na floração, {o_nome} aguenta {hold.days} dias sem chuva neste solo."
+        elif short:
+            head = f"O veranico daqui costuma passar do que {o_nome} aguenta: {veranico_days} dias contra {hold.days}."
+        else:
+            head = f"{crop_name} aguenta o veranico típico daqui: {hold.days} dias contra {veranico_days}."
+        depth = (f" O solo raso ({depth_cm:.0f} cm) limita a raiz." if hold.limited_by_depth else
+                 "" if depth_cm is not None else
+                 " Profundidade do solo não informada: contamos a raiz inteira (em solo raso, aguenta menos).")
+        etc = f"{hold.etc_mm_day:.1f}".replace(".", ",")
+        phrase = (f"{head} Neste solo ({TEXTURE_LABELS[texture_group]}), a raiz alcança cerca de "
+                  f"{hold.raw_mm:.0f} mm de água sem sofrer e, na floração, a lavoura gasta {etc} mm por dia.{depth}")
+    solo = None
+    if today is not None:
+        normal = "" if today.normal_fraction is None else (
+            f" O normal desta data é {round(today.normal_fraction * 10)} de 10.")
+        need = (f" Faltam cerca de {_round5(today.missing_mm)} mm de chuva para a camada da raiz ficar sem "
+                "falta de água para plantar." if today.missing_mm > 0 else
+                " A camada da raiz está sem falta de água para plantar.")
+        solo = {"title": f"Água no solo em {fmt_date(today.day)}",
+                "fill": round(today.fraction, 3),
+                "normal": None if today.normal_fraction is None else round(today.normal_fraction, 3),
+                "text": (f"O solo está com {round(today.fraction * 10)} de 10 partes da água que a camada da raiz "
+                         f"segura.{normal}{need} Estimado com a chuva e a temperatura do NASA POWER.")}
+    return {"title": "Quantos dias a terra segura a lavoura", "bars": bars, "phrase": phrase, "solo": solo}
 
 
 def _climate_stats(
@@ -107,21 +159,45 @@ def _climate_stats(
     return replace(stats, veranico_prob=veranico_prob, veranico_lengths=veranico_lengths)
 
 
-@st.cache_data(show_spinner=False)
+def _rotation_drought(sequence: list[str], names: dict[str, str], water: dict | None) -> str:
+    """A lavoura mais sensível da rotação e quantos dias ela aguenta sem chuva na floração."""
+    if water is None:
+        return ""
+    days = [(water[c][0].days, c) for c in sequence if c in water and water[c][0].days is not None]
+    if not days:
+        return "aguenta veranicos longos (palma)"
+    d, crop = min(days)
+    return f"aguenta {d} dias sem chuva ({names.get(crop, crop).lower()})"
+
+
+def _soil_config(location_id: str, soil: dict) -> SimulationConfig:
+    """Configuração do motor com o solo de hoje (a mesma no aviso e no ranking)."""
+    return SimulationConfig(
+        location_id=location_id,
+        n_scenarios=N_SCENARIOS,
+        initial_soil_state=SoilHealthState(soil["initial_soil_val"]),
+        initial_organic_matter_pct=soil["initial_om_pct"],
+        initial_nitrogen_kg_ha=soil["initial_n_kg_ha"],
+        soil_crop_factors=dict(soil["soil_factors"]),
+        veranico_days=0,  # o veranico vem do sorteio com o histórico real, não de um valor fixo
+    )
+
+
+@st.cache_data(show_spinner="Rodando 10.000 cenários por cultura...")
 def _risk_matrix(
     location_id: str,
     safra_delay_days: int,
-    typical_veranico_days: int,
     veranico_prob: float | None,
     veranico_lengths: tuple[int, ...],
+    soil_items: tuple,
     rain_override: RainOverride | None = None,
 ):
-    """Matriz atraso x cultura do semáforo (não depende do horizonte)."""
+    """Matriz atraso x cultura do aviso: o mesmo motor e a mesma régua do ranking (1 ano, 1 cultura)."""
     return build_planting_window_risk_matrix(
         _climate_stats(location_id, veranico_prob, veranico_lengths, rain_override),
         delay_days_grid=sorted({*DELAY_GRID, safra_delay_days}),
-        veranico_days=typical_veranico_days,
         n_samples=N_SCENARIOS,
+        config=_soil_config(location_id, dict(soil_items)),
     )
 
 
@@ -277,7 +353,8 @@ def _delay_data(df_matrix, crop_id: str, delay: int) -> dict:
                        "current": r["delay_days"] == delay})
     phrase = (f"Hoje a chuva está {delay} dias atrasada." if delay > 0
               else "Hoje não há atraso de chuva a considerar.")
-    return {"title": "Se a chuva atrasar: em quantos de cada 10 anos a roça quebra", "phrase": phrase, "points": points}
+    return {"title": "Se a chuva atrasar: em quantos de cada 10 anos dá quebra de safra", "phrase": phrase,
+            "points": points}
 
 
 def _why_section(report, series, location_json: str, as_of: date) -> None:
@@ -365,9 +442,14 @@ def plantio_page() -> None:
     veranico = report.veranico if report is not None else None
     if veranico is not None and veranico.seasons_with_onset:
         veranico_args = (round(veranico.probability, 3), veranico.veranico_lengths)
-        typical_veranico = veranico.typical_longest
     else:
-        veranico_args, typical_veranico = (None, ()), 7
+        veranico_args = (None, ())
+    soil_args = {
+        "initial_soil_val": int(initial_markov_state(profile.get("mo_pct"))),
+        "initial_om_pct": round(profile.get("mo_pct"), 2),
+        "initial_n_kg_ha": round(available_nitrogen_kg_ha(profile), 1),
+        "soil_factors": tuple(sorted((c.crop_id, round(c.yield_factor, 3)) for c in suitability)),
+    }
 
     rain_override: RainOverride | None = None
     if series is not None:
@@ -387,7 +469,13 @@ def plantio_page() -> None:
                 pt_stats.safrinha_rain_std_mm,
             )
 
-    df_matrix = _risk_matrix(location_id, delay, typical_veranico, *veranico_args, rain_override=rain_override)
+    df_matrix = _risk_matrix(
+        location_id,
+        delay,
+        *veranico_args,
+        tuple(soil_args.items()),
+        rain_override=rain_override,
+    )
 
     # --- o que plantar: seletor + janela + aviso --------------------------------------
     zarc_season_start = report.status.season_start if report is not None else season_start_for(as_of, 1)
@@ -417,6 +505,14 @@ def plantio_page() -> None:
     chosen = components.crop_combo(items, chosen if chosen in names else next(iter(names)), key="combo_plantio")
     store("cultura", chosen)
     verdict = verdicts[chosen]
+
+    texture_group = soil_group
+    veranico_typical = veranico.typical_longest if veranico is not None and veranico.seasons_with_onset else None
+    try:
+        water = water_by_crop(loc_json, as_of, texture_group, profile.depth_m, tuple(names))
+    except (RainDataUnavailable, TemperatureUnavailable) as exc:
+        water = None
+        st.warning(f"Não foi possível calcular a água da roça: {exc}")
 
     place_name = f"{rain_location.name}/{rain_location.state}" if rain_location.state else rain_location.name
     st.html('<div style="height:.75rem"></div>')
@@ -448,7 +544,10 @@ def plantio_page() -> None:
             foot = (f"O risco usa o clima de exemplo de {nearest.name}/{nearest.state} (a {nearest_km:.0f} km da roça). "
                     "A chuva e o ZARC são do ponto da roça.")
         components.crop_hero({"icon": CROP_ICONS[chosen], "eyebrow": "O aviso do Acauã", "title": names[chosen],
-                              "verdict": verdict.word, "tone": verdict.level, "text": verdict.reason, "foot": foot},
+                              "verdict": verdict.word, "tone": verdict.level, "text": verdict.reason,
+                              "agua": _water_block(chosen, names[chosen], water, veranico_typical, texture_group,
+                                                   profile.depth_cm),
+                              "foot": foot},
                              key="aviso_plantio")
     st.html('<div style="height:.75rem"></div>')
     components.delay_risk(_delay_data(df_matrix, chosen, delay), key="atraso_plantio")
@@ -460,9 +559,9 @@ def plantio_page() -> None:
 
     # --- ranking das rotações ---------------------------------------------------------
     theme.divider()
-    theme.label("Rotações · 10.000 cenários")
-    st.header("Ranking das rotações", anchor=False)
-    st.markdown("Da rotação que mais aguenta para a que menos aguenta, conforme o que pesa mais para a família.")
+    theme.label("Ranking das rotações · 10.000 cenários")
+    st.header("Qual plano rende mais estável?", anchor=False)
+    st.markdown("Da melhor para a pior rotação, conforme o que pesa mais no seu plano.")
     c_h, c_p = st.columns([1, 1.4])
     with c_h:
         keep("horizonte", DEFAULT_HORIZON)
@@ -479,7 +578,7 @@ def plantio_page() -> None:
      df_climate_annual) = _run_cached_simulation(
         location_id=location_id,
         horizon_years=horizon_years,
-        initial_soil_val=int(initial_markov_state(profile.get("mo_pct"))),
+        initial_soil_val=soil_args["initial_soil_val"],
         safra_delay_days=delay,
         veranico_prob=veranico_args[0],
         veranico_lengths=veranico_args[1],
@@ -489,16 +588,21 @@ def plantio_page() -> None:
         rain_override=rain_override,
     )
     ranked = rank_by_balance_priority(results, priority)
-    risk_txt = ("perde a safra" if horizon_years == 1 else "2 anos seguidos de perda")
+    risk_txt = ("quebra de safra" if horizon_years == 1 else "2 quebras de safra seguidas")
     items = [{
         "id": r.strategy.strategy_id, "name": r.strategy.short_name or r.strategy.name,
         "aguenta": r.survival_score_of_10,
         "risco": f"{risk_txt} em {round(r.prob_two_consecutive_losses * 10)} de 10 cenários",
-        "comida": f"{r.expected_food_kg_ha_year:,.0f} kg/ha·ano".replace(",", "."),
+        "graos": f"{r.expected_food_kg_ha_year:,.0f} kg/ha·ano".replace(",", "."),
         "forragem": f"{r.expected_forage_kg_ha_year:,.0f} kg/ha·ano".replace(",", "."),
+        "renda": f"R$ {annual_profit(r):,.0f}/ha·ano".replace(",", "."),
+        "seca": _rotation_drought(r.strategy.annual_sequence, names, water),
         "nota": score,
     } for r, score in ranked]
     detail = components.rotation_ranking(items, stored("rotacao_detalhe", ""), key="ranking_rotacoes")
+    st.caption("Colhe = anos sem quebra de safra (colher menos da metade do normal). Renda estimada com preços e "
+               "custos de referência fixos do modelo, não com a cotação de hoje. Os dias de seca são da lavoura "
+               "mais sensível da rotação, na floração, neste solo.")
     store("rotacao_detalhe", detail)
     by_id = {r.strategy.strategy_id: r for r in results}
     if detail and detail in by_id:

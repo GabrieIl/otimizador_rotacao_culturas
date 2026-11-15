@@ -8,6 +8,8 @@ import folium
 import streamlit as st
 from streamlit_folium import st_folium
 
+from crop_optimizer.analytics import lens_insights
+from crop_optimizer.analytics.lens_insights import LensInsight
 from crop_optimizer.analytics.satellite_lenses import (
     MONTHS_PT,
     LensView,
@@ -16,8 +18,13 @@ from crop_optimizer.analytics.satellite_lenses import (
     pixel_bounds,
     pixel_label,
 )
-from crop_optimizer.app import theme
-from crop_optimizer.app.common import current_location, select_example
+from crop_optimizer.app import navigation, theme
+from crop_optimizer.app.common import (
+    current_location,
+    rain_delay_report,
+    select_example,
+    soil_profile,
+)
 from crop_optimizer.app.state import arrived, get_roca, keep, set_roca, store, watch
 from crop_optimizer.config import load_yaml_config
 from crop_optimizer.domain.models import LocationSpec
@@ -32,6 +39,7 @@ from crop_optimizer.ingestion.geocode import (
     search_places,
 )
 from crop_optimizer.ingestion.gibs import GibsLayer, GibsUnavailable, load_layers
+from crop_optimizer.ingestion.gibs_values import GibsValueUnavailable
 from crop_optimizer.ingestion.rain_history import RainDataUnavailable, RainSeries, fetch_rain_series
 
 _BASE_TILES = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
@@ -60,6 +68,45 @@ def _layers(layer_ids: tuple[str, ...], today: date) -> tuple[dict[str, GibsLaye
 @st.cache_data(show_spinner="Baixando a chuva do ponto (NASA POWER)...")
 def _rain_series(location_json: str, today: date) -> RainSeries:
     return fetch_rain_series(LocationSpec.model_validate_json(location_json), today=today)
+
+
+@st.cache_data(show_spinner="Lendo o valor da lente no ponto da roça (NASA GIBS)...")
+def _insight(lens_id: str, location_json: str, today: date) -> tuple[LensInsight | None, str]:
+    """Frase da lente sobre a roça. Devolve (frase, motivo de não ter frase)."""
+    location = LocationSpec.model_validate_json(location_json)
+    lens = {item["id"]: item for item in load_yaml_config("lentes")["lentes"]}[lens_id]
+    lat, lon = location.latitude, location.longitude
+    try:
+        if lens_id == "relevo":
+            return lens_insights.relief_insight(soil_profile(location).get("declividade_pct")), ""
+        if lens_id == "chuva":
+            return lens_insights.rain_insight(fetch_rain_series(location, today=today), today), ""
+        layer = _layers((lens["camada"],), today)[0].get(lens["camada"])
+        if layer is None:
+            return None, "camada fora do catálogo do GIBS"
+        args = (layer, lens["colormap"], lat, lon, float(lens["pixel_km"]), today)
+        if lens_id == "agua_no_solo":
+            return lens_insights.soil_moisture_insight(*args), ""
+        if lens_id == "verde":
+            return lens_insights.green_insight(*args), ""
+        if lens_id == "calor":
+            ref = rain_delay_report(location_json, today).status.reference
+            return lens_insights.heat_insight(*args, ref=ref, crop_name="milho"), ""
+    except (GibsUnavailable, GibsValueUnavailable, RainDataUnavailable) as exc:
+        return None, str(exc)
+    return None, ""
+
+
+def _insight_card(insight: LensInsight | None, reason: str) -> None:
+    with st.container(border=True, key="acaua-insight"):
+        theme.label("Na sua roça")
+        if insight is None:
+            st.write("Sem dado suficiente no ponto para esta lente" + (f" ({reason})." if reason else "."))
+            return
+        st.markdown(f"**{insight.text}**")
+        st.caption(insight.detail)
+        st.write(insight.used_in + ".")
+        navigation.link(insight.page, "Ver no Plantio" if insight.page == "plantio" else "Ver na Início")
 
 
 def _confirm_point(lat: float, lon: float) -> None:
@@ -269,7 +316,6 @@ def _map_view(lat: float, lon: float, first_run: bool) -> None:
 
 
 def _info_column(view: LensView | None, rain: RainSeries | None, place_label: str) -> None:
-    cfg = load_yaml_config("lentes")
     if view is not None:
         lens = view.lens
         with st.container(border=True):
@@ -285,9 +331,6 @@ def _info_column(view: LensView | None, rain: RainSeries | None, place_label: st
             st.image(view.legend_url, caption="Escala de cores (NASA GIBS)", width="stretch")
         if lens["id"] == "chuva" and rain is not None:
             _rain_numbers(view, rain, place_label)
-    with st.container(border=True):
-        st.markdown("**O que o satélite não vê**")
-        st.write(cfg["o_que_nao_ve"])
 
 
 def _rain_numbers(view: LensView, rain: RainSeries, place_label: str) -> None:
@@ -395,14 +438,18 @@ def satellite_page() -> None:
 
     rain = None
     place_label = roca.label if is_roca else f"{lat:.4f}, {lon:.4f}"
+    location = roca.to_location() if is_roca else Roca(lat=lat, lon=lon).to_location()
     if lens_id == "chuva":
-        location = roca.to_location() if is_roca else Roca(lat=lat, lon=lon).to_location()
         try:
             rain = _rain_series(location.model_dump_json(), today)
         except RainDataUnavailable as exc:
             st.warning(f"Chuva do ponto indisponível: {exc}")
     with col_info:
         _info_column(view, rain, place_label)
+        _insight_card(*_insight(lens_id, location.model_dump_json(), today))
+        with st.container(border=True):
+            st.markdown("**O que o satélite não vê**")
+            st.write(cfg["o_que_nao_ve"])
 
     caps = f" Catálogo de imagens de {caps_date:%d/%m/%Y}." if caps_date else ""
     theme.footer(

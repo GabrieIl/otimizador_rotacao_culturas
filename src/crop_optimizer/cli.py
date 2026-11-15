@@ -102,8 +102,8 @@ def cmd_simulate(
     matrix = build_planting_window_risk_matrix(
         stats,
         delay_days_grid=[delay_days],
-        veranico_days=veranico_days,
         n_samples=min(2_000, n_scenarios),
+        config=config,
     )
     corn_row = matrix.filter(matrix["crop_id"] == "milho_sertanejo")
     light = classify_traffic_light(float(corn_row["failure_prob_pct"][0]))
