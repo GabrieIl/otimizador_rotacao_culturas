@@ -165,7 +165,7 @@ DEFAULT_CROPS: list[CropSpec] = [
         forage_yield_ton_ha=5.60,
         forage_drought_resilience=0.92,
     ),
-    # --- culturas de sequeiro adicionadas (Feature 8) -----------------------------------------
+    # --- culturas de sequeiro adicionadas (Feature 9) -----------------------------------------
     # O motor usa estas só no aviso por cultura (colheita RELATIVA ao normal), que não depende de
     # produtividade, preço ou custo. Esses campos ficam zerados de propósito: não há fonte para eles
     # e as culturas novas não entram em nenhuma rotação. A sensibilidade à seca e a chuva do ciclo

@@ -581,7 +581,7 @@ export default function(component) {
   root.innerHTML = '<div class="lista">' + data.items.map((it, i) => `
     <div class="item ${i === 0 ? 'top' : ''} ${it.id === data.detail ? 'aberto' : ''}">
       <div class="pos">${i + 1}</div>
-      <div><p class="nome">${esc(it.name)}</p>
+      <div><p class="nome">${esc(it.name)}${it.tag ? ` <span class="pill tone-neutro">${esc(it.tag === 'hoje' ? 'como planta hoje' : it.tag)}</span>` : ''}</p>
         <div class="chips"><span>colhe em <b>${it.aguenta} de 10 anos</b></span><span>${esc(it.risco)}</span>
           <span>grãos <b>${esc(it.graos)}</b></span><span>forragem <b>${esc(it.forragem)}</b></span>
           ${it.renda ? `<span>renda <b>${esc(it.renda)}</b></span>` : ''}
@@ -649,3 +649,120 @@ export default function(component) {
 
 def terrain_panel(data: dict[str, Any], key: str) -> None:
     _TERRAIN(data=data, key=key)
+
+
+# --- 10. quadro da fazenda (talhões) -------------------------------------------------------------
+
+_FARM = _component(
+    "fazenda_talhoes",
+    """
+.fazenda { position:relative; width:100%; aspect-ratio: 100 / 56; min-height:280px; background:var(--creme);
+  border:2px dashed rgba(22,48,55,.35); border-radius:1rem; padding:6px; }
+.talhao { position:absolute; border-radius:.7rem; overflow:hidden; cursor:pointer; border:1.5px solid var(--linha);
+  background-color:var(--areia); color:var(--pet); text-align:left; padding:.55rem .65rem; display:flex; flex-direction:column;
+  justify-content:space-between; font-family:Inter, sans-serif;
+  background-image: repeating-linear-gradient(-32deg, rgba(156,99,70,.10) 0 2px, transparent 2px 11px); }
+.talhao:hover { border-color:var(--terra); }
+.talhao.sel { border:3px solid var(--terra); background-color:#fff; box-shadow: 0 0 0 3px rgba(156,99,70,.15); }
+.talhao.resto { cursor:default; background-color:transparent; border-style:dashed;
+  background-image: repeating-linear-gradient(45deg, rgba(22,48,55,.07) 0 1px, transparent 1px 8px); }
+.talhao .topo { display:flex; justify-content:space-between; gap:.4rem; align-items:baseline; }
+.talhao .nome { font-family: Montserrat, Inter, sans-serif; font-weight:800; font-size:.95rem; line-height:1.1; }
+.talhao .ha { font-family:'IBM Plex Mono', monospace; font-size:.72rem; color:var(--sub); white-space:nowrap; }
+.talhao .meio { display:flex; align-items:center; gap:.5rem; min-height:0; }
+.talhao .ico { width:52px; aspect-ratio:1; flex:none; }
+.talhao.grande .ico { width:76px; }
+.talhao .cult { font-size:.82rem; line-height:1.25; }
+.talhao .cult b { display:block; font-size:.92rem; }
+.talhao.mini { padding:.4rem; }
+.talhao.mini .cult, .talhao.mini .ha { display:none; }
+.talhao.mini .nome { font-size:.74rem; }
+.talhao.mini .ico { width:30px; }
+@media (max-width: 640px) { .talhao .ico, .talhao.grande .ico { width:34px; } .talhao .cult { display:none; } }
+.legenda { font-size:.78rem; color:var(--sub); margin:.5rem 0 0 0; }
+""",
+    """
+export default function(component) {
+  const { data, setStateValue, parentElement } = component;
+  const root = rootOf(parentElement);
+  const sel = data.selected;
+  const cells = data.talhoes.map((t) => {
+    const [x, y, w, h] = t.rect;
+    const style = `left:calc(${x}% + 4px); top:calc(${y / 0.56}% + 4px); width:calc(${w}% - 8px); height:calc(${h / 0.56}% - 8px);`;
+    const mini = (w < 15 || h < 12) ? 'mini' : '';
+    const grande = (w * h) > 1300 ? 'grande' : '';
+    if (t.resto) return `<div class="talhao resto ${mini}" style="${style}"><div class="topo"><span class="nome">${esc(t.nome)}</span><span class="ha">${esc(t.area)}</span></div></div>`;
+    return `<button class="talhao anim ${t.id === sel ? 'sel' : ''} ${mini} ${grande}" style="${style}" data-id="${esc(t.id)}" aria-pressed="${t.id === sel}" title="${esc(t.nome)}: ${esc(t.crop || 'livre')}">
+      <div class="topo"><span class="nome">${esc(t.nome)}</span><span class="ha">${esc(t.area)}</span></div>
+      <div class="meio">${t.icon ? `<span class="ico">${t.icon}</span>` : ''}<span class="cult"><b>${esc(t.crop || 'Livre')}</b>${esc(t.label)}</span></div></button>`;
+  }).join('');
+  root.innerHTML = `<div class="fazenda" role="group" aria-label="Talhões da fazenda">${cells}</div>
+    <p class="legenda">${esc(data.legend)}</p>`;
+  root.querySelectorAll('button.talhao').forEach((b) => { b.onclick = () => setStateValue('selected', b.dataset.id); });
+}
+""",
+)
+
+
+def farm_board(data: dict[str, Any], selected: str, key: str) -> str:
+    """Desenho da fazenda com os talhões em proporção à área; devolve o talhão escolhido."""
+    current = _current(key, "selected", selected)
+    _FARM(data={**data, "selected": current}, key=key, default={"selected": current},
+          on_selected_change=lambda: None)
+    return current
+
+
+# --- 11. calendário de rotação de um talhão ----------------------------------------------------------
+
+_TCAL = _component(
+    "calendario_talhao",
+    """
+.cal { background:#fff; border:1px solid var(--linha); border-radius:1rem; padding:1.1rem 1.2rem; }
+h3 { font-family: Montserrat, Inter, sans-serif; font-size:1.3rem; font-weight:800; margin:.1rem 0 .2rem 0; }
+.sub { color:var(--pet2); font-size:.92rem; margin:0 0 .8rem 0; line-height:1.45; }
+.grade { overflow-x:auto; }
+.linha { display:grid; grid-template-columns: 3.4rem repeat(12, minmax(52px, 1fr)); gap:4px; margin-bottom:4px; min-width:720px; }
+.ano { font-family: Montserrat, Inter, sans-serif; font-weight:800; font-size:.95rem; display:flex; align-items:center; }
+.mes { position:relative; border-radius:.5rem; background:var(--creme); min-height:66px; padding:3px 3px 14px 3px;
+  display:flex; flex-wrap:wrap; align-content:flex-start; justify-content:center; gap:2px; }
+.mes .m { position:absolute; bottom:2px; left:0; right:0; text-align:center; font-family:'IBM Plex Mono', monospace;
+  font-size:.62rem; color:var(--sub); text-transform:uppercase; }
+.mes.passado { opacity:.45; }
+.mes.hoje { outline:2px solid var(--terra); outline-offset:-2px; }
+.it { width:34px; height:34px; position:relative; }
+.mes .it:only-of-type { width:40px; height:40px; }
+.it.plano { border-radius:.45rem; box-shadow: inset 0 0 0 1.5px rgba(156,99,70,.55); }
+.it.perene { opacity:.8; }
+.tag { position:absolute; left:50%; transform:translateX(-50%); bottom:-3px; font-size:.5rem; font-weight:700;
+  letter-spacing:.04em; text-transform:uppercase; padding:0 3px; border-radius:3px; white-space:nowrap; }
+.tag.plantio { background:var(--verde); color:#fff; }
+.tag.colheita { background:var(--ocre); color:var(--pet); }
+.leg { display:flex; flex-wrap:wrap; gap:.4rem 1.1rem; margin-top:.7rem; font-size:.8rem; color:var(--sub); align-items:center; }
+.leg span { display:inline-flex; align-items:center; gap:.35rem; }
+.sw { display:inline-block; width:14px; height:14px; border-radius:3px; }
+.vazio { color:var(--sub); font-size:.9rem; }
+""",
+    """
+export default function(component) {
+  const { data, parentElement } = component;
+  const root = rootOf(parentElement);
+  const rows = (data.rows || []).map((r) => `<div class="linha"><div class="ano">${esc(r.ano)}</div>${r.meses.map((m) => {
+    const items = m.itens.map((it) => `<span class="it ${esc(it.origem)}" title="${esc(it.nome)}: ${esc(it.estado_txt)}">
+      <span class="ico">${it.icon}</span>${it.estado === 'plantio' || it.estado === 'colheita' ? `<span class="tag ${it.estado}">${it.estado}</span>` : ''}</span>`).join('');
+    return `<div class="mes ${m.passado ? 'passado' : ''} ${m.hoje ? 'hoje' : ''}">${items}<span class="m">${esc(m.m)}</span></div>`;
+  }).join('')}</div>`).join('');
+  root.innerHTML = `<div class="cal"><p class="rot">${esc(data.eyebrow)}</p><h3>${esc(data.title)}</h3>
+    <p class="sub">${esc(data.sub)}</p>
+    ${rows ? `<div class="grade">${rows}</div>` : `<p class="vazio">${esc(data.empty)}</p>`}
+    <div class="leg"><span><span class="sw" style="background:var(--verde)"></span>plantio</span>
+      <span><span class="sw" style="background:var(--ocre)"></span>colheita</span>
+      <span><span class="sw" style="box-shadow:inset 0 0 0 1.5px rgba(156,99,70,.55)"></span>cultura do plano</span>
+      <span><span class="sw" style="outline:2px solid var(--terra); outline-offset:-2px"></span>este mês</span>
+      <span><span class="sw" style="background:var(--creme); opacity:.45"></span>já passou</span></div></div>`;
+}
+""",
+)
+
+
+def talhao_calendar(data: dict[str, Any], key: str) -> None:
+    _TCAL(data=data, key=key)
