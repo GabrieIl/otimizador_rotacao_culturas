@@ -5,6 +5,7 @@ from __future__ import annotations
 import numpy as np
 import polars as pl
 
+from crop_optimizer.domain.crop_registry import sequeiro_ids
 from crop_optimizer.domain.models import (
     CropSpec,
     SimulationConfig,
@@ -47,13 +48,8 @@ def build_planting_window_risk_matrix(
     `veranico_days` dele é um veranico FIXO somado ao sorteado (o app usa 0).
     """
     catalog = crop_map()
-    targets = target_crops or [
-        catalog["milho_sertanejo"],
-        catalog["feijao_caupi"],
-        catalog["sorgo_forrageiro"],
-        catalog["palma_forrageira"],
-        catalog["capim_buffel"],
-    ]
+    # todas as culturas de sequeiro do registro (as irrigadas não dependem da chuva)
+    targets = target_crops or [catalog[c] for c in sequeiro_ids() if c in catalog]
     delays = delay_days_grid or [0, 7, 14, 21, 28, 35]
     base = (config or SimulationConfig()).model_copy(
         update={"n_scenarios": n_samples, "seed": seed}

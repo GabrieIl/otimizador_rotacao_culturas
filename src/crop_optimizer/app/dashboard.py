@@ -16,7 +16,7 @@ from crop_optimizer.analytics import (
     build_survival_scoreboard_frame,
     classify_traffic_light,
 )
-from crop_optimizer.analytics.crop_advice import crop_verdict
+from crop_optimizer.analytics.crop_advice import crop_verdict, irrigated_verdict
 from crop_optimizer.analytics.rain_calendar import calendar_months, dry_spells
 from crop_optimizer.analytics.rain_delay import (
     CropWindowStatus,
@@ -55,6 +55,13 @@ from crop_optimizer.app.icons import CROP_ICONS
 from crop_optimizer.app.satellite_page import satellite_page
 from crop_optimizer.app.state import arrived, keep, set_roca, store, stored, watch
 from crop_optimizer.config import load_yaml_config
+from crop_optimizer.domain.crop_registry import (
+    crop_info,
+    group_names,
+    is_irrigated,
+    is_perennial,
+    ordered_ids,
+)
 from crop_optimizer.domain.models import BalancePriority, SimulationConfig, SoilHealthState
 from crop_optimizer.domain.presets import DEFAULT_STRATEGIES
 from crop_optimizer.domain.roca import Roca, nearest_preset
@@ -74,7 +81,9 @@ DELAY_GRID = [0, 7, 14, 21, 28, 35]
 N_SCENARIOS = 10_000  # fixo: cenários do Monte Carlo
 HORIZONS = [1, 2, 3, 5, 10]  # anos; filtro do ranking das rotações
 DEFAULT_HORIZON = 5
-_TONE_PILL = {"verde": "Pode plantar", "amarelo": "Arriscado", "vermelho": "Não plante", "espera": "Espere"}
+_TONE_PILL = {"verde": "Pode plantar", "amarelo": "Arriscado", "vermelho": "Não plante", "espera": "Espere",
+              "rega": "Com rega"}
+_TONE = {"verde": "verde", "amarelo": "amarelo", "vermelho": "vermelho", "espera": "espera", "rega": "neutro"}
 _PRIORITY = {
     BalancePriority.EQUILIBRADO: "Equilíbrio",
     BalancePriority.COMIDA: "Produção de grãos",
@@ -93,12 +102,38 @@ def _round5(mm: float) -> int:
 
 def _water_block(crop_id: str, crop_name: str, water: dict | None, veranico_days: int | None,
                  texture_group: str, depth_cm: float | None) -> dict | None:
-    """Bloco "água" do aviso: dias que a lavoura aguenta x veranico típico, e a água no solo hoje."""
+    """Bloco "água" do aviso.
+
+    Sequeiro: dias que a lavoura aguenta x veranico típico, e quanta chuva falta para plantar.
+    Irrigada: intervalo de rega neste solo e quanto a primeira rega precisa para encher a camada da raiz.
+    """
     if water is None or crop_id not in water:
         return None
-    hold, today = water[crop_id]
+    hold, today, plan = water[crop_id]
     nome = crop_name.lower()
-    o_nome = f"{'a' if nome.startswith('palma') else 'o'} {nome}"
+    o_nome = f"{'a' if crop_info(crop_id).get('feminino') else 'o'} {nome}"
+    soil_txt = TEXTURE_LABELS[texture_group]
+    depth = (f" O solo raso ({depth_cm:.0f} cm) limita a raiz." if (plan or hold).limited_by_depth else
+             "" if depth_cm is not None else
+             " Profundidade do solo não informada: contamos a raiz inteira (em solo raso, a água acaba antes).")
+    if plan is not None:
+        peak = f"{plan.peak_mm_day:.1f}".replace(".", ",")
+        zr = f"{plan.zr_m:.1f}".replace(".", ",")
+        phrase = (f"A raiz {'da' if o_nome.startswith('a ') else 'do'} {nome} vai até cerca de {zr} m. Neste solo "
+                  f"({soil_txt}), ela tira sem sofrer uns {plan.liters_per_m2:.0f} litros por m²; no pico, a lavoura "
+                  f"gasta {peak} litros por m² por dia. Por isso, o intervalo entre regas é de no máximo "
+                  f"{plan.interval_days} {'dia' if plan.interval_days == 1 else 'dias'}.{depth}")
+        bars = [{"label": "Intervalo máximo entre regas", "days": plan.interval_days, "tone": "neutro"}]
+        solo = None
+        if today is not None:
+            first = (f" A primeira rega precisa de cerca de {_round5(today.taw_mm * (1 - today.fraction))} litros "
+                     "por m² para encher a camada da raiz." if today.fraction < 0.9 else "")
+            solo = {"title": f"Água no solo em {fmt_date(today.day)}", "fill": round(today.fraction, 3),
+                    "normal": None if today.normal_fraction is None else round(today.normal_fraction, 3),
+                    "text": (f"O solo está com {round(today.fraction * 10)} de 10 partes da água que a camada da raiz "
+                             f"segura.{first} Estimado com a chuva e a temperatura do NASA POWER.")}
+        return {"title": "A rega neste solo", "bars": bars, "phrase": phrase, "solo": solo}
+
     bars = []
     if veranico_days:
         bars.append({"label": "Veranico típico daqui", "days": veranico_days, "tone": "veranico"})
@@ -115,11 +150,8 @@ def _water_block(crop_id: str, crop_name: str, water: dict | None, veranico_days
             head = f"O veranico daqui costuma passar do que {o_nome} aguenta: {veranico_days} dias contra {hold.days}."
         else:
             head = f"{crop_name} aguenta o veranico típico daqui: {hold.days} dias contra {veranico_days}."
-        depth = (f" O solo raso ({depth_cm:.0f} cm) limita a raiz." if hold.limited_by_depth else
-                 "" if depth_cm is not None else
-                 " Profundidade do solo não informada: contamos a raiz inteira (em solo raso, aguenta menos).")
         etc = f"{hold.etc_mm_day:.1f}".replace(".", ",")
-        phrase = (f"{head} Neste solo ({TEXTURE_LABELS[texture_group]}), a raiz alcança cerca de "
+        phrase = (f"{head} Neste solo ({soil_txt}), a raiz alcança cerca de "
                   f"{hold.raw_mm:.0f} mm de água sem sofrer e, na floração, a lavoura gasta {etc} mm por dia.{depth}")
     solo = None
     if today is not None:
@@ -163,7 +195,7 @@ def _rotation_drought(sequence: list[str], names: dict[str, str], water: dict | 
     """A lavoura mais sensível da rotação e quantos dias ela aguenta sem chuva na floração."""
     if water is None:
         return ""
-    days = [(water[c][0].days, c) for c in sequence if c in water and water[c][0].days is not None]
+    days = [(water[c][0].days, c) for c in sequence if c in water and water[c][0].days is not None]  # (dias, cultura)
     if not days:
         return "aguenta veranicos longos (palma)"
     d, crop = min(days)
@@ -493,14 +525,19 @@ def plantio_page() -> None:
     zarc_crops = set(zarc_cfg["culturas"])
     verdicts = {}
     for crop_id in names:
+        if is_irrigated(crop_id):
+            plan = water[crop_id][2] if water is not None else None
+            verdicts[crop_id] = irrigated_verdict(crop_id, names[crop_id], plan)
+            continue
         row = df_matrix.filter((df_matrix["crop_id"] == crop_id) & (df_matrix["delay_days"] == delay))
         risk = float(row["failure_prob_pct"][0]) if row.height else 50.0
         window = windows.get(crop_id)
         if crop_id in zarc_crops and window is None and zarc_res.zarc_error is None:
             window = CropWindowStatus(crop_id, None, "sem_indicacao")
         verdicts[crop_id] = crop_verdict(crop_id, risk, report.status if report else None, window, delay)
+    groups = group_names()
     items = [{"id": c, "name": names[c], "icon": CROP_ICONS[c], "status": _TONE_PILL[verdicts[c].level],
-              "tone": verdicts[c].level} for c in names]
+              "tone": _TONE[verdicts[c].level], "group": groups.get(crop_info(c).get("grupo"), "")} for c in names]
     chosen = stored("cultura", next(iter(names)))
     chosen = components.crop_combo(items, chosen if chosen in names else next(iter(names)), key="combo_plantio")
     store("cultura", chosen)
@@ -544,13 +581,14 @@ def plantio_page() -> None:
             foot = (f"O risco usa o clima de exemplo de {nearest.name}/{nearest.state} (a {nearest_km:.0f} km da roça). "
                     "A chuva e o ZARC são do ponto da roça.")
         components.crop_hero({"icon": CROP_ICONS[chosen], "eyebrow": "O aviso do Acauã", "title": names[chosen],
-                              "verdict": verdict.word, "tone": verdict.level, "text": verdict.reason,
+                              "verdict": verdict.word, "tone": _TONE[verdict.level], "text": verdict.reason,
                               "agua": _water_block(chosen, names[chosen], water, veranico_typical, texture_group,
                                                    profile.depth_cm),
                               "foot": foot},
                              key="aviso_plantio")
-    st.html('<div style="height:.75rem"></div>')
-    components.delay_risk(_delay_data(df_matrix, chosen, delay), key="atraso_plantio")
+    if not is_irrigated(chosen):
+        st.html('<div style="height:.75rem"></div>')
+        components.delay_risk(_delay_data(df_matrix, chosen, delay), key="atraso_plantio")
 
     # --- por quê ------------------------------------------------------------------
     if report is not None and series is not None:

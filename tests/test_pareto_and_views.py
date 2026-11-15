@@ -17,6 +17,7 @@ from crop_optimizer.app.charts import (
     plot_planting_window_heatmap,
     plot_survival_scoreboard,
 )
+from crop_optimizer.domain.crop_registry import sequeiro_ids
 from crop_optimizer.domain.models import BalancePriority, SimulationConfig, TrafficLightLevel
 from crop_optimizer.domain.presets import DEFAULT_STRATEGIES
 from crop_optimizer.engine import (
@@ -79,7 +80,7 @@ def test_pareto_scoreboard_balance_and_charts() -> None:
     df_nutrients = build_nutrient_dynamics_frame(results)
     df_pareto = build_pareto_frontier_frame(results)
 
-    assert df_matrix.height == 6 * 5
+    assert df_matrix.height == 6 * len(sequeiro_ids())
     corn = df_matrix.filter(df_matrix["crop_id"] == "milho_sertanejo").sort("delay_days")
     assert corn["failure_prob_pct"][-1] > corn["failure_prob_pct"][0]
 

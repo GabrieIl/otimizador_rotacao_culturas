@@ -10,7 +10,8 @@ url_ckan: "https://dados.agricultura.gov.br/api/3/action/package_show?id=6d3d141
 timeout_segundos: 120
 
 # Cultura do motor -> Nome_cultura na tábua do ZARC.
-# Palma forrageira e capim-buffel não constam na tábua anual.
+# Esta tábua de dados abertos só traz grãos anuais. Fora dela: palma, buffel, fava, mandioca,
+# batata-doce, hortaliças e frutas (o ZARC de mandioca e de frutas sai em portarias à parte).
 culturas:
   milho_sertanejo: "Milho 1ª Safra"     # CONFERIR
   feijao_caupi: "Feijão Caupi"          # CONFERIR

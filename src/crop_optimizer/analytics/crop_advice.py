@@ -14,12 +14,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
+from crop_optimizer.analytics.agua import IrrigationPlan
 from crop_optimizer.analytics.rain_delay import CropWindowStatus, fmt_date
 from crop_optimizer.analytics.views import classify_traffic_light
 from crop_optimizer.config import load_yaml_config
 from crop_optimizer.engine.rain_onset import RainSeasonStatus
 
-Level = Literal["verde", "amarelo", "vermelho", "espera"]
+Level = Literal["verde", "amarelo", "vermelho", "espera", "rega"]
 WORDS = {"verde": "Pode plantar", "amarelo": "Arriscado", "vermelho": "Não plante agora"}
 
 
@@ -70,3 +71,21 @@ def crop_verdict(
     if status is not None and status.state == "firmando":
         reason += " A chuva atingiu o critério de início, mas ainda falta confirmar que não vem veranico."
     return CropVerdict(crop_id, level, WORDS[level], reason, of_10)
+
+
+def irrigated_verdict(crop_id: str, crop_name: str, plan: IrrigationPlan | None) -> CropVerdict:
+    """Cultura que no semiárido só vai com rega: o aviso é o plano de rega, não o risco da chuva."""
+    from crop_optimizer.domain.crop_registry import crop_info
+
+    fem = bool(crop_info(crop_id).get("feminino"))
+    head = f"No semiárido, {'a' if fem else 'o'} {crop_name.lower()} é {'cultivada' if fem else 'cultivado'} com rega."
+    if plan is None:
+        return CropVerdict(crop_id, "rega", "Só com rega", head, 0)
+    each = f"{plan.liters_per_m2:.0f}"
+    total = f"{plan.total_liters_m2:,.0f}".replace(",", ".")
+    when = "por ano" if plan.per_year else "no ciclo todo"
+    days = f"{plan.interval_days} {'dia' if plan.interval_days == 1 else 'dias'}"
+    reason = (f"{head} Neste solo, no pico do consumo, a água da raiz dura até {days}: é o maior intervalo entre "
+              f"regas, com cerca de {each} litros por m² em cada uma (no gotejo, rega-se mais vezes com menos água). "
+              f"A lavoura pede uns {total} litros por m² {when}, sem contar a chuva.")
+    return CropVerdict(crop_id, "rega", "Só com rega", reason, 0)

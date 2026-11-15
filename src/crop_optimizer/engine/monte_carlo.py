@@ -6,6 +6,7 @@ import time
 
 import numpy as np
 
+from crop_optimizer.config import load_yaml_config
 from crop_optimizer.domain.models import (
     CropSpec,
     RotationStrategy,
@@ -16,6 +17,14 @@ from crop_optimizer.domain.models import (
 from crop_optimizer.domain.presets import crop_map
 from crop_optimizer.engine.markov_soil import STATE_YIELD_MULTIPLIER, MarkovSoilModel
 from crop_optimizer.lakehouse.catalog import SeasonalClimateStats
+
+
+def rain_requirement_mm(crop: CropSpec) -> float:
+    """Chuva da estação a partir da qual o motor não vê falta de água (config/culturas.yaml)."""
+    entry = load_yaml_config("culturas")["culturas"].get(crop.crop_id, {})
+    if "chuva_ciclo_mm" in entry:
+        return float(entry["chuva_ciclo_mm"])
+    return 160.0 if crop.is_cover_crop else 270.0  # cultura fora do registro: o padrão antigo
 
 
 def _delay_and_veranico_penalty(
@@ -116,7 +125,7 @@ class MonteCarloRotationEngine:
             # Chuva acumulada na janela útil (quadra chuvosa)
             rain_mean = climate_stats.safra_rain_mean_mm
             rain_std = climate_stats.safra_rain_std_mm
-            rain_req = 430.0 if crop.crop_id == "milho_sertanejo" else (270.0 if not crop.is_cover_crop else 160.0)
+            rain_req = rain_requirement_mm(crop)
 
             rain_draw = np.maximum(
                 55.0,
