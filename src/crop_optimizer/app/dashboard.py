@@ -467,15 +467,30 @@ def _zarc_data(
             ),
             "source": source,
         }
+    y0 = today.year
+    y1 = y0 + 1
     labels = [f"{decendio_start_label(i)} a {decendio_end_label(i)}" for i in range(1, 37)]
-    doy = (today - date(today.year, 1, 1)).days
+    doy = (today - date(y0, 1, 1)).days
+    days_in_y0 = (date(y0 + 1, 1, 1) - date(y0, 1, 1)).days
+    today_pos = round(100 * (doy + 0.5) / days_in_y0, 2)
     decs = zarc_res.decendios_by_crop.get(crop_id) or [0] * 36
+    years = [
+        {
+            "year": yr,
+            "decendios": list(decs),
+            "labels": [f"{decendio_start_label(i)} a {decendio_end_label(i)}/{yr}" for i in range(1, 37)],
+            "today_pos": today_pos if yr == y0 else None,
+        }
+        for yr in (y0, y1)
+    ]
     source_full = f"{source} · {window.window.portaria}" if window.window.portaria else source
     return {
         "has_window": True,
         "decendios": decs,
         "labels": labels,
-        "today_pos": round(100 * (doy + 0.5) / 365, 2),
+        "today_pos": today_pos,
+        "years": years,
+        "horizon_label": f"{y0}–{y1}",
         "state_txt": window.phrase,
         "source": source_full,
     }

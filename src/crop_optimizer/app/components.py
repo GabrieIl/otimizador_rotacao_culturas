@@ -482,17 +482,23 @@ _ZARC = _component(
     """
 .box { background:#fff; border:1px solid var(--linha); border-radius:1rem; padding:1.2rem 1.3rem; }
 .estado { font-family: Montserrat, Inter, sans-serif; font-weight:700; font-size:1.15rem; margin:.2rem 0 .8rem 0; }
-.linha { position:relative; display:grid; grid-template-columns: repeat(36, 1fr); gap:2px; margin-top:22px; }
-.c { height:30px; border-radius:3px; background:var(--areia); }
+.anos { display:flex; flex-direction:column; gap:.85rem; margin-top:.9rem; }
+.ano-row { display:grid; grid-template-columns: 3rem 1fr; gap:.55rem; align-items:start; }
+.ano-tag { font-family:'IBM Plex Mono', monospace; font-weight:700; font-size:.78rem; color:var(--pet);
+  background:var(--areia); border-radius:.45rem; padding:.38rem 0; text-align:center; margin-top:18px; }
+.ano-track { min-width:0; }
+.linha { position:relative; display:grid; grid-template-columns: repeat(36, 1fr); gap:2px; margin-top:18px; }
+.c { height:28px; border-radius:3px; background:var(--areia); }
 .r20 { background:#9CC3AC; } .r30 { background:#EDD39B; } .r40 { background:#E6BDB8; }
-.meses { display:grid; grid-template-columns: repeat(12, 1fr); margin-top:4px; font-size:.68rem; color:var(--sub); font-family:'IBM Plex Mono', monospace; text-transform: capitalize; }
-.hoje { position:absolute; top:-22px; transform: translateX(-50%); display:flex; flex-direction:column; align-items:center; font-size:.68rem; color:var(--terra); font-weight:600; }
-.hoje::after { content:""; width:2px; height:44px; background:var(--terra); margin-top:2px; }
+.meses { display:grid; grid-template-columns: repeat(12, 1fr); margin-top:4px; font-size:.66rem; color:var(--sub); font-family:'IBM Plex Mono', monospace; text-transform: capitalize; }
+.hoje { position:absolute; top:-20px; transform: translateX(-50%); display:flex; flex-direction:column; align-items:center; font-size:.66rem; color:var(--terra); font-weight:600; z-index:2; pointer-events:none; }
+.hoje::after { content:""; width:2px; height:32px; background:var(--terra); margin-top:2px; }
 .leg { display:flex; flex-wrap:wrap; gap:.4rem 1rem; margin-top:.9rem; font-size:.78rem; color:var(--pet2); }
 .leg span { display:inline-flex; align-items:center; gap:.35rem; }
 .leg i { width:14px; height:14px; border-radius:3px; display:inline-block; }
 .nao { color:var(--pet2); font-size:.95rem; line-height:1.5; }
 .fonte { color:var(--sub); font-size:.74rem; margin-top:.7rem; font-family:'IBM Plex Mono', monospace; }
+@media (max-width: 520px) { .ano-row { grid-template-columns: 1fr; gap:.25rem; } .ano-tag { margin-top:0; width:fit-content; padding:.2rem .55rem; } }
 """,
     """
 export default function(component) {
@@ -503,12 +509,18 @@ export default function(component) {
     root.innerHTML = `<div class="box"><p class="rot">Janela oficial de plantio</p><p class="estado">${esc(d.state_txt)}</p><p class="nao">${esc(d.detail)}</p><p class="fonte">${esc(d.source)}</p></div>`;
     return;
   }
-  const cells = d.decendios.map((r, i) => `<span class="c ${r ? 'r' + r : ''}" title="${esc(d.labels[i])}${r ? ' · risco ' + r + '%' : ' · não indicado'}"></span>`).join('');
-  const hoje = d.today_pos == null ? '' : `<span class="hoje" style="left:${d.today_pos}%">hoje</span>`;
-  root.innerHTML = `<div class="box"><p class="rot">Janela oficial de plantio · ZARC</p>
+  const years = (d.years && d.years.length) ? d.years : [{ year: '', decendios: d.decendios, labels: d.labels, today_pos: d.today_pos }];
+  const months = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'].map((m) => `<span>${m}</span>`).join('');
+  const rowsHtml = years.map((yr) => {
+    const cells = yr.decendios.map((r, i) => `<span class="c ${r ? 'r' + r : ''}" title="${esc(yr.labels[i])}${r ? ' · risco ' + r + '%' : ' · não indicado'}"></span>`).join('');
+    const hoje = yr.today_pos == null ? '' : `<span class="hoje" style="left:${yr.today_pos}%">hoje</span>`;
+    const track = `<div class="ano-track"><div class="linha">${hoje}${cells}</div><div class="meses">${months}</div></div>`;
+    return yr.year ? `<div class="ano-row"><span class="ano-tag">${esc(yr.year)}</span>${track}</div>` : track;
+  }).join('');
+  const title = d.horizon_label ? `Janela oficial de plantio · ZARC (${esc(d.horizon_label)})` : 'Janela oficial de plantio · ZARC';
+  root.innerHTML = `<div class="box"><p class="rot">${title}</p>
     <p class="estado">${esc(d.state_txt)}</p>
-    <div class="linha">${hoje}${cells}</div>
-    <div class="meses">${['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'].map((m) => `<span>${m}</span>`).join('')}</div>
+    <div class="anos">${rowsHtml}</div>
     <div class="leg"><span><i class="r20"></i>risco de 20%</span><span><i class="r30"></i>30%</span><span><i class="r40"></i>40%</span><span><i style="background:#E8E2D6"></i>não indicado</span></div>
     <p class="fonte">${esc(d.source)}</p></div>`;
 }

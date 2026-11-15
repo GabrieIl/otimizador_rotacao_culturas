@@ -447,3 +447,37 @@ def test_plantio_page_renders_rainfed_irrigated_and_zarc_data_without_error(
     finally:
         st.cache_data.clear()
         st.cache_resource.clear()
+
+
+def test_zarc_calendar_shows_current_and_next_year() -> None:
+    from crop_optimizer.analytics.rain_delay import ZarcStatusReport, crop_window_status
+    from crop_optimizer.app.dashboard import _zarc_data
+    from crop_optimizer.ingestion.zarc_tabua import ZarcWindow
+
+    win = ZarcWindow(
+        crop_id="milho_sertanejo",
+        zarc_name="Milho 1ª Safra",
+        decendios=[31, 32, 33, 1, 2, 3],
+        start_dec=31,
+        end_dec=3,
+        best_risk_pct=20,
+        combos=1,
+        portaria="Port. 10",
+    )
+    as_of = date(2026, 11, 15)
+    cw = crop_window_status(win, "milho_sertanejo", date(2026, 10, 1), as_of)
+    decs = [20 if i in (31, 32, 33, 1, 2, 3) else 0 for i in range(1, 37)]
+    res = ZarcStatusReport(
+        crop_windows=[cw],
+        zarc_safra="2026/2027",
+        decendios_by_crop={"milho_sertanejo": decs},
+    )
+    out = _zarc_data("milho_sertanejo", cw, as_of, res, "Petrolina/PE")
+    assert out["has_window"] is True
+    assert out["horizon_label"] == "2026–2027"
+    assert [y["year"] for y in out["years"]] == [2026, 2027]
+    assert out["years"][0]["today_pos"] is not None
+    assert out["years"][1]["today_pos"] is None
+    assert "/2026" in out["years"][0]["labels"][0]
+    assert "/2027" in out["years"][1]["labels"][0]
+    assert "2027" in out["state_txt"]
