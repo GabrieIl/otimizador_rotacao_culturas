@@ -14,6 +14,9 @@
 # chuva_ciclo_mm: chuva da estação a partir da qual o motor não vê falta de água (só sequeiro).
 #   Os valores de milho, caupi, sorgo, palma e buffel são os que o motor já usava.
 #   Os novos seguem a mesma escala (~0,85-0,9 do limite inferior da necessidade da FAO-33). # CONFERIR
+# ciclo_dias: do plantio à colheita, quando difere da soma das fases da FAO-56 (config/agua.yaml).
+#   Mandioca: colhida com 12 a 18 meses.  # REVISAR AGRÔNOMO
+# perene: fica no talhão (não gira na rotação do planejamento).
 # feminino: o nome pede "a" (a mandioca, a alface).
 # sensibilidade_seca: escala do motor (milho 1,48 com Ky 1,25 da FAO-33). Novos = ~1,18 x Ky. # CONFERIR
 
@@ -41,7 +44,7 @@ culturas:
 
   # --- raízes e tubérculos ---------------------------------------------------------------
   mandioca:       # muito tolerante à seca: perde folha e espera a chuva ("poupança na terra")
-    {feminino: true, grupo: raizes, manejo: sequeiro, chuva_ciclo_mm: 400, sensibilidade_seca: 0.70, perene: true}  # REVISAR AGRÔNOMO
+    {feminino: true, grupo: raizes, manejo: sequeiro, chuva_ciclo_mm: 400, sensibilidade_seca: 0.70, perene: true, ciclo_dias: 365}  # REVISAR AGRÔNOMO
   batata_doce:    # FAO-33: ~500 mm; tolera seca depois de enraizada
     {feminino: true, grupo: raizes, manejo: sequeiro, chuva_ciclo_mm: 380, sensibilidade_seca: 1.10}  # REVISAR AGRÔNOMO
   cenoura: {feminino: true, grupo: raizes, manejo: irrigado}

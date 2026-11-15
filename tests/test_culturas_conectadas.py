@@ -1,4 +1,4 @@
-"""Toda cultura está ligada a todos os dados que as telas usam (Feature 8: novas culturas)."""
+"""Toda cultura está ligada a todos os dados que as telas usam (Feature 9: novas culturas)."""
 
 from __future__ import annotations
 

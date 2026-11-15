@@ -1,4 +1,4 @@
-# Feature 8 — Culturas do agricultor familiar
+# Feature 9 — Culturas do agricultor familiar
 
 **Status:** implementada na branch `feature/novas-culturas` (a partir da `feature/agua-e-insights`).
 Validada com testes e com cliques reais em navegador, cultura por cultura, na Plantio e na Início.

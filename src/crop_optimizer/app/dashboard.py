@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import replace
 from datetime import date, timedelta
 
+import polars as pl
 import streamlit as st
 
 from crop_optimizer.accessibility import WHAT_WE_DONT_KNOW_ITEMS, generate_one_pager_pdf
@@ -15,6 +16,7 @@ from crop_optimizer.analytics import (
     build_planting_window_risk_matrix,
     build_survival_scoreboard_frame,
     classify_traffic_light,
+    talhoes,
 )
 from crop_optimizer.analytics.crop_advice import crop_verdict, irrigated_verdict
 from crop_optimizer.analytics.rain_calendar import calendar_months, dry_spells
@@ -55,11 +57,19 @@ from crop_optimizer.domain.crop_registry import (
     is_irrigated,
     is_perennial,
     ordered_ids,
+    sequeiro_ids,
 )
-from crop_optimizer.domain.models import BalancePriority, SimulationConfig, SoilHealthState
-from crop_optimizer.domain.presets import DEFAULT_STRATEGIES
+from crop_optimizer.domain.fazenda import load_fazenda
+from crop_optimizer.domain.models import (
+    BalancePriority,
+    RotationStrategy,
+    SimulationConfig,
+    SoilHealthState,
+)
+from crop_optimizer.domain.presets import crop_map
 from crop_optimizer.domain.roca import nearest_preset
 from crop_optimizer.engine import MonteCarloRotationEngine, compute_pareto_frontier
+from crop_optimizer.engine.candidates import CURRENT_ID, candidate_strategies, current_strategy
 from crop_optimizer.engine.pareto import annual_profit, rank_by_balance_priority
 from crop_optimizer.engine.rain_onset import OnsetCriteria
 from crop_optimizer.ingestion.power_temperature import TemperatureUnavailable
@@ -69,6 +79,7 @@ from crop_optimizer.ingestion.zarc_tabua import decendio_end_label, decendio_sta
 DELAY_GRID = [0, 7, 14, 21, 28, 35]
 N_SCENARIOS = 10_000  # fixo: cenários do Monte Carlo
 HORIZONS = [1, 2, 3, 5, 10]  # anos; filtro do ranking das rotações
+TOP_ROTATIONS = 5  # rotações mostradas no ranking (mais a de hoje)
 DEFAULT_HORIZON = 5
 _TONE_PILL = {"verde": "Pode plantar", "amarelo": "Arriscado", "vermelho": "Não plante", "espera": "Espere",
               "rega": "Com rega"}
@@ -173,6 +184,112 @@ def _rotation_drought(sequence: list[str], names: dict[str, str], water: dict | 
     return f"aguenta {d} dias sem chuva ({names.get(crop, crop).lower()})"
 
 
+def _num(v: float, digits: int = 1) -> str:
+    return f"{v:.{digits}f}".replace(".", ",").replace(",0", "") if digits == 1 else f"{v:.{digits}f}".replace(".", ",")
+
+
+def _fmt_month(d: date) -> str:
+    return f"{talhoes.MONTHS[d.month - 1]}/{d:%y}"
+
+
+def _talhoes_section(fazenda, report, ranked, names: dict[str, str], horizon_years: int, as_of: date,
+                     detail: str) -> None:
+    """Quadro da fazenda + calendário de rotação do talhão escolhido + plano completo para baixar."""
+    theme.divider()
+    theme.label("Planejamento dos talhões")
+    st.header("O plano da fazenda", anchor=False)
+    if fazenda is None or not fazenda.talhoes:
+        st.markdown("Cadastre a área da fazenda e os talhões na página Início (seção **Sua roça**) para ver o "
+                    "plano de cada talhão aqui.")
+        navigation.link("inicio", "Cadastrar os talhões na Início")
+        return
+    if report is None or report.status.reference.median_offset is None:
+        st.warning("Sem a referência de quando a chuva costuma firmar neste ponto, não dá para marcar as datas de "
+                   "plantio do plano.")
+        return
+    st.markdown("Clique num talhão para ver o calendário dele: a cultura de hoje até a colheita e as próximas da "
+                "rotação, safra a safra.")
+    by_id = {r.strategy.strategy_id: r for r, _ in ranked}
+    options = [r.strategy.strategy_id for r, _ in ranked]
+    keep("plano_modo", "ranking")
+    keep("plano_rotacao", options[0])
+    if detail and detail in by_id and st.session_state.get("_plano_ultimo_detalhe") != detail:
+        st.session_state["_plano_ultimo_detalhe"] = detail
+        store("plano_rotacao", detail)
+        st.session_state["plano_rotacao"] = detail
+    if st.session_state.get("plano_rotacao") not in options:
+        st.session_state["plano_rotacao"] = options[0]
+        store("plano_rotacao", options[0])
+    c_mode, c_rot = st.columns([1, 1.6])
+    with c_mode:
+        mode = st.segmented_control("Mostrar", options=["ranking", "hoje"],
+                                    format_func={"ranking": "Rotação do ranking", "hoje": "Como planta hoje"}.get,
+                                    **watch("plano_modo")) or "ranking"
+    with c_rot:
+        rot_id = st.selectbox("Rotação do ranking", options=options,
+                              format_func=lambda i: f"{options.index(i) + 1}º  {by_id[i].strategy.short_name or by_id[i].strategy.name}",
+                              disabled=mode == "hoje", **watch("plano_rotacao"))
+    crops = list(by_id[rot_id].strategy.annual_sequence) if mode == "ranking" else []
+    years = max(2, horizon_years)
+    plan = talhoes.plan_farm(fazenda, mode, crops, report.status.reference, as_of, years)
+
+    # --- quadro --------------------------------------------------------------------------
+    rest = max(0.0, fazenda.area_total_ha - fazenda.area_talhoes_ha)
+    areas = [t.area_ha for t in fazenda.talhoes] + ([rest] if rest > 0.01 * fazenda.area_total_ha else [])
+    rects = talhoes.treemap(areas)
+    cells = []
+    for t, rect in zip(fazenda.talhoes, rects, strict=False):
+        crop, label = talhoes.crop_now(plan[t.id], as_of)
+        cells.append({"id": t.id, "nome": t.nome, "area": f"{_num(t.area_ha)} ha", "rect": [round(v, 3) for v in rect],
+                      "icon": CROP_ICONS.get(crop, "") if crop else "", "crop": names.get(crop, "") if crop else "",
+                      "label": {"agora": "plantada agora", "próxima": "próxima cultura", "livre": "sem cultura"}[label]})
+    if len(rects) > len(fazenda.talhoes):
+        cells.append({"id": "_resto", "nome": "Sem talhão", "area": f"{_num(rest)} ha", "rect": list(rects[-1]),
+                      "resto": True})
+    keep("talhao", fazenda.talhoes[0].id)
+    chosen = stored("talhao", fazenda.talhoes[0].id)
+    if chosen not in plan:
+        chosen = fazenda.talhoes[0].id
+    legend = (f"Fazenda de {_num(fazenda.area_total_ha)} ha, {len(fazenda.talhoes)} talhões. Desenho em proporção à "
+              "área (não é o formato real).")
+    chosen = components.farm_board({"talhoes": cells, "legend": legend}, chosen, key="fazenda_plantio")
+    store("talhao", chosen)
+
+    # --- calendário do talhão escolhido ------------------------------------------------------------
+    t = next(x for x in fazenda.talhoes if x.id == chosen)
+    grid = talhoes.month_grid(plan[t.id], as_of, years)
+    state_txt = {"plantio": "plantio", "colheita": "colheita", "cresce": "na roça", "perene": "perene"}
+    for row in grid:
+        for m in row["meses"]:
+            for it in m["itens"]:
+                it.update(icon=CROP_ICONS.get(it["id"], ""), nome=names.get(it["id"], it["id"]),
+                          estado_txt=state_txt[it["estado"]])
+    seq = " → ".join(f"{names.get(c.crop_id, c.crop_id)} ({_fmt_month(c.inicio)})" for c in plan[t.id][:6])
+    rot_name = by_id[rot_id].strategy.short_name or by_id[rot_id].strategy.name
+    sub = (f"{_num(t.area_ha)} ha. " + (f"Rotação: {rot_name}. " if mode == "ranking" else "Repetindo o que planta hoje. ")
+           + (f"Sequência: {seq}." if seq else ""))
+    has_any = any(m["itens"] for row in grid for m in row["meses"])
+    components.talhao_calendar({
+        "eyebrow": "Calendário do talhão", "title": t.nome, "sub": sub, "rows": grid if has_any else [],
+        "empty": ("Este talhão não tem cultura plantada hoje, então não há o que repetir. Veja a rotação do ranking."
+                  if mode == "hoje" else "Nenhuma cultura da rotação cabe neste talhão."),
+    }, key="calendario_talhao")
+
+    # --- o plano completo --------------------------------------------------------------------------
+    rows = talhoes.plan_rows(fazenda, plan)
+    with st.expander("O plano completo da fazenda (todos os talhões)"):
+        for x in fazenda.talhoes:
+            items = " → ".join(f"{names.get(c.crop_id, c.crop_id)} ({_fmt_month(c.inicio)})" for c in plan[x.id])
+            st.markdown(f"**{x.nome}** ({_num(x.area_ha)} ha): {items or 'sem cultura'}")
+        if rows:
+            st.download_button("Baixar o plano (CSV)", data=pl.DataFrame(rows).write_csv().encode("utf-8"),
+                               file_name="plano_talhoes_acaua.csv", mime="text/csv")
+    st.caption("O plantio de sequeiro é marcado no dia em que a chuva costuma firmar aqui (mediana 1991-2020); a "
+               "colheita, pelo ciclo da cultura (FAO-56). Culturas perenes ficam no talhão; as anuais giram de um "
+               "talhão para o outro a cada safra. A simulação do ranking supõe áreas iguais para as culturas da "
+               "rotação; os talhões têm tamanhos diferentes.")
+
+
 def _soil_config(location_id: str, soil: dict) -> SimulationConfig:
     """Configuração do motor com o solo de hoje (a mesma no aviso e no ranking)."""
     return SimulationConfig(
@@ -198,25 +315,46 @@ def _risk_matrix(location_id: str, safra_delay_days: int, veranico_prob: float |
     )
 
 
-@st.cache_data(show_spinner="Rodando 10.000 cenários...")
-def _run_cached_simulation(
-    location_id: str,
-    horizon_years: int,
-    initial_soil_val: int,
-    safra_delay_days: int,
-    veranico_prob: float | None = None,
-    veranico_lengths: tuple[int, ...] = (),
-    initial_om_pct: float = 2.2,
-    initial_n_kg_ha: float = 55.0,
-    soil_factors: tuple[tuple[str, float], ...] = (),
-):
-    catalog = _get_lakehouse_catalog()
-    climate_stats = _climate_stats(location_id, veranico_prob, veranico_lengths)
-    locations = {loc.location_id: loc for loc in catalog.load_locations()}
-    location = locations[location_id]
-    crops = {c.crop_id: c for c in catalog.load_crops()}
-    engine = MonteCarloRotationEngine(crops_catalog=crops)
+_KEEP_SCENARIOS = 1_000  # cenários guardados no cache para os gráficos (as notas usam os 10.000)
 
+
+def _slim(res):
+    """Resultado com só os primeiros cenários nas matrizes: guarda centenas de rotações sem estourar a memória."""
+    k = _KEEP_SCENARIOS
+    soil = res.soil_output
+    return replace(
+        res,
+        npv_profit_brl_ha=res.npv_profit_brl_ha[:k],
+        annual_profit_brl_ha=res.annual_profit_brl_ha[:k],
+        annual_food_kg_ha=res.annual_food_kg_ha[:k],
+        annual_forage_kg_ha=res.annual_forage_kg_ha[:k],
+        relative_harvest=None if res.relative_harvest is None else res.relative_harvest[:k],
+        soil_output=replace(soil, states=soil.states[:k], nitrogen_kg_ha=soil.nitrogen_kg_ha[:k],
+                            organic_matter_pct=soil.organic_matter_pct[:k],
+                            fertilizer_savings_brl_ha=soil.fertilizer_savings_brl_ha[:k],
+                            yield_multiplier=soil.yield_multiplier[:k]),
+    )
+
+
+@st.cache_data(show_spinner=False, max_entries=4000)
+def _simulate_one(strategy_key: tuple, config_json: str, location_id: str, veranico_prob: float | None,
+                  veranico_lengths: tuple[int, ...]):
+    """Uma rotação, 10.000 cenários. Fica no cache: mudar a restrição só escolhe outras do cache."""
+    strategy_id, name, description, crops = strategy_key
+    strategy = RotationStrategy(strategy_id=strategy_id, name=name, short_name=name, description=description,
+                                annual_sequence=list(crops))
+    config = SimulationConfig.model_validate_json(config_json)
+    catalog = {**crop_map(), **{c.crop_id: c for c in _get_lakehouse_catalog().load_crops()}}
+    res = MonteCarloRotationEngine(crops_catalog=catalog).simulate_strategy(
+        strategy, _climate_stats(location_id, veranico_prob, veranico_lengths), config)
+    return _slim(res), build_nutrient_dynamics_frame([res])
+
+
+def _run_simulation(strategies: list[RotationStrategy], location_id: str, horizon_years: int, initial_soil_val: int,
+                    safra_delay_days: int, veranico_prob: float | None, veranico_lengths: tuple[int, ...],
+                    initial_om_pct: float, initial_n_kg_ha: float, soil_factors: tuple[tuple[str, float], ...]):
+    catalog = _get_lakehouse_catalog()
+    location = {loc.location_id: loc for loc in catalog.load_locations()}[location_id]
     config = SimulationConfig(
         location_id=location_id,
         horizon_years=horizon_years,
@@ -228,26 +366,19 @@ def _run_cached_simulation(
         safra_delay_days=safra_delay_days,
         veranico_days=0,  # o veranico vem do sorteio com o histórico real, não de um valor fixo
     )
-    results = engine.simulate_portfolio(DEFAULT_STRATEGIES, climate_stats, config)
+    config_json = config.model_dump_json()
+    results, nutrients = [], []
+    with st.spinner(f"Rodando 10.000 cenários para {len(strategies)} rotações..."):
+        for strat in strategies:
+            key = (strat.strategy_id, strat.short_name or strat.name, strat.description, tuple(strat.annual_sequence))
+            res, df_n = _simulate_one(key, config_json, location_id, veranico_prob, veranico_lengths)
+            results.append(res)
+            nutrients.append(df_n)
     compute_pareto_frontier(results, criterion="two_year_loss")
-
-    df_scoreboard = build_survival_scoreboard_frame(results)
-    df_balance = build_balance_tradeoff_frame(results)
-    df_pareto = build_pareto_frontier_frame(results)
-    df_nutrients = build_nutrient_dynamics_frame(results)
-    df_climate_annual = catalog.get_annual_climate_summary(location_id)
-
-    return (
-        location,
-        config,
-        climate_stats,
-        results,
-        df_scoreboard,
-        df_balance,
-        df_pareto,
-        df_nutrients,
-        df_climate_annual,
-    )
+    return (location, config, _climate_stats(location_id, veranico_prob, veranico_lengths), results,
+            build_survival_scoreboard_frame(results), build_balance_tradeoff_frame(results),
+            build_pareto_frontier_frame(results), pl.concat(nutrients, how="vertical_relaxed"),
+            catalog.get_annual_climate_summary(location_id))
 
 
 def _zarc_data(crop_id: str, window: CropWindowStatus | None, ibge: str | None, today: date, report) -> dict:
@@ -451,8 +582,31 @@ def plantio_page() -> None:
         priority = st.segmented_control(
             "O que pesa mais", options=list(_PRIORITY), format_func=lambda p: _PRIORITY[p], **watch("prioridade"),
         ) or BalancePriority.EQUILIBRADO
+    seq_names = {c: names[c] for c in sequeiro_ids() if c in names}
+    c_req, c_exc = st.columns(2)
+    with c_req:
+        keep("rot_precisa", [])
+        required = st.multiselect("A rotação precisa ter", options=list(seq_names),
+                                  format_func=lambda c: seq_names[c], placeholder="Nenhuma exigência",
+                                  **watch("rot_precisa"))
+    with c_exc:
+        keep("rot_sem", [])
+        excluded = st.multiselect("A rotação não pode ter", options=list(seq_names),
+                                  format_func=lambda c: seq_names[c], placeholder="Nenhuma restrição",
+                                  **watch("rot_sem"))
+    fazenda = load_fazenda(rain_location.location_id)
+    crops_now = [t.cultura for t in fazenda.talhoes if t.cultura] if fazenda else []
+    current = current_strategy(crops_now)
+    candidates = candidate_strategies(required, excluded)
+    if set(required) & set(excluded):
+        st.warning("A mesma cultura está em \"precisa ter\" e em \"não pode ter\". Tire de um dos dois.")
+    elif not candidates:
+        st.warning("Nenhuma rotação de 1 a 3 culturas cumpre essas restrições.")
+    same_as_current = {tuple(sorted(c.annual_sequence)) for c in [current]}
+    candidates = [c for c in candidates if tuple(sorted(c.annual_sequence)) not in same_as_current]
     (location, config, climate_stats, results, df_scoreboard, df_balance, df_pareto, df_nutrients,
-     df_climate_annual) = _run_cached_simulation(
+     df_climate_annual) = _run_simulation(
+        [current, *candidates],
         location_id=location_id,
         horizon_years=horizon_years,
         initial_soil_val=soil_args["initial_soil_val"],
@@ -463,7 +617,14 @@ def plantio_page() -> None:
         initial_n_kg_ha=soil_args["initial_n_kg_ha"],
         soil_factors=soil_args["soil_factors"],
     )
-    ranked = rank_by_balance_priority(results, priority)
+    ranked_all = rank_by_balance_priority(results, priority)
+    top = [(r, sc) for r, sc in ranked_all if r.strategy.strategy_id != CURRENT_ID][:TOP_ROTATIONS]
+    current_pos = next(i for i, (r, _) in enumerate(ranked_all) if r.strategy.strategy_id == CURRENT_ID)
+    ranked = sorted([*top, ranked_all[current_pos]], key=lambda item: -item[1])
+    n_ok = len(results) - 1
+    st.caption(f"{n_ok} {'rotação cumpre' if n_ok == 1 else 'rotações cumprem'} as restrições; aparecem as "
+               f"{min(TOP_ROTATIONS, n_ok)} melhores e, para comparar, o jeito que a roça planta hoje "
+               f"(em {current_pos + 1}º lugar entre {len(results)}).")
     risk_txt = ("quebra de safra" if horizon_years == 1 else "2 quebras de safra seguidas")
     items = [{
         "id": r.strategy.strategy_id, "name": r.strategy.short_name or r.strategy.name,
@@ -489,6 +650,8 @@ def plantio_page() -> None:
         st.plotly_chart(plot_rotation_years(res, config.family_food_target_kg_year, config.herd_forage_target_kg_year),
                         width="stretch")
         st.plotly_chart(plot_rotation_soil(df_nutrients, name), width="stretch")
+
+    _talhoes_section(fazenda, report, ranked, names, horizon_years, as_of, detail)
 
     # --- ficha técnica ---------------------------------------------------------------
     theme.divider()

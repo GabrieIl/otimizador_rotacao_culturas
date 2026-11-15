@@ -35,6 +35,7 @@ from crop_optimizer.app.icons import CROP_ICONS
 from crop_optimizer.app.state import arrived, store, stored
 from crop_optimizer.config import load_yaml_config
 from crop_optimizer.domain.crop_registry import crop_info, group_names, ordered_ids
+from crop_optimizer.domain.fazenda import Fazenda, Talhao, clear_fazenda, load_fazenda, save_fazenda
 from crop_optimizer.domain.soil_profile import (
     ATTRIBUTES,
     DEPTH_FIELD,
@@ -89,6 +90,102 @@ def _roca_section(location, roca) -> None:
     else:
         with st.container(key="acaua-editar"):
             navigation.link("satelite", "Editar local")
+
+
+# --- a fazenda e os talhões ---------------------------------------------------------------
+
+_NO_CROP = "Sem cultura"
+
+
+def _farm_rows(faz: Fazenda | None, names: dict[str, str]) -> list[dict]:
+    if faz is None:
+        return []
+    return [{"nome": t.nome, "area_ha": t.area_ha, "cultura": names.get(t.cultura, _NO_CROP) if t.cultura else _NO_CROP,
+             "plantio": t.plantio} for t in faz.talhoes]
+
+
+def _to_date(value) -> date | None:
+    if value is None or (isinstance(value, float) and value != value) or str(value) in ("NaT", ""):
+        return None
+    if isinstance(value, date):
+        return value if type(value) is date else value.date()
+    return date.fromisoformat(str(value)[:10])
+
+
+def _farm_section(location) -> None:
+    """Área da fazenda e talhões (área, cultura de hoje e data do plantio). Usado no plano da Plantio."""
+    import pandas as pd
+
+    names = {c: crop_names()[c] for c in ordered_ids()}
+    by_name = {v: k for k, v in names.items()}
+    faz = load_fazenda(location.location_id)
+    st.html('<div style="height:.5rem"></div>')
+    theme.label("A fazenda e os talhões")
+    if faz is not None and faz.talhoes:
+        planted = sum(1 for t in faz.talhoes if t.cultura)
+        st.html(f'<div class="acaua-roca"><div><p class="k">Área</p><p class="v num">{_num(faz.area_total_ha)} ha</p></div>'
+                f'<div><p class="k">Talhões</p><p class="v num">{len(faz.talhoes)}</p></div>'
+                f'<div><p class="k">Com cultura hoje</p><p class="v num">{planted}</p></div></div>')
+    else:
+        st.markdown("Diga o tamanho da fazenda e como ela é dividida em talhões. A página Plantio monta o plano de "
+                    "rotação de cada talhão.")
+    draft_key = f"_fazenda_rascunho_{location.location_id}"
+    with st.expander("Editar a fazenda e os talhões" if faz else "Cadastrar a fazenda e os talhões",
+                     expanded=faz is None):
+        draft = st.session_state.get(draft_key) or _farm_rows(faz, names)
+        c1, c2 = st.columns(2)
+        total = c1.number_input("Área da fazenda (hectares)", min_value=0.0, step=0.5, format="%.1f",
+                                value=float(faz.area_total_ha) if faz else 0.0, key=f"fazenda_area_{location.location_id}")
+        n = int(c2.number_input("Quantos talhões", min_value=1, max_value=30, step=1, value=max(1, len(draft)),
+                                key=f"fazenda_n_{location.location_id}"))
+        rows = [dict(r) for r in draft[:n]] + [{"nome": f"Talhão {i + 1}", "area_ha": 0.0, "cultura": _NO_CROP,
+                                                "plantio": None} for i in range(len(draft[:n]), n)]
+        # talhão sem área recebe a parte que sobra da fazenda, dividida por igual
+        empty = [r for r in rows if not float(r.get("area_ha") or 0)]
+        if empty and total:
+            used = sum(float(r.get("area_ha") or 0) for r in rows)
+            share = round(max(0.0, total - used) / len(empty), 1)
+            for r in empty:
+                r["area_ha"] = share
+        df = pd.DataFrame(rows, columns=["nome", "area_ha", "cultura", "plantio"])
+        df["plantio"] = pd.to_datetime(df["plantio"], errors="coerce")  # vazio (NaT) aparece em branco
+        edited = st.data_editor(
+            df,
+            column_config={
+                "nome": st.column_config.TextColumn("Talhão", required=True, max_chars=30),
+                "area_ha": st.column_config.NumberColumn("Área (ha)", min_value=0.0, step=0.1, format="%.1f",
+                                                         required=True),
+                "cultura": st.column_config.SelectboxColumn("Cultura plantada hoje", options=[_NO_CROP, *names.values()],
+                                                            required=True),
+                "plantio": st.column_config.DateColumn("Data do plantio", format="DD/MM/YYYY",
+                                                       max_value=date.today()),
+            },
+            hide_index=True, num_rows="fixed", width="stretch", key=f"fazenda_tabela_{location.location_id}_{n}",
+        )
+        records = edited.to_dict("records")
+        st.session_state[draft_key] = records
+        fazenda = Fazenda(float(total), [
+            Talhao(f"t{i + 1}", str(r["nome"] or f"Talhão {i + 1}").strip(), float(r["area_ha"] or 0.0),
+                   by_name.get(r["cultura"]) if r["cultura"] != _NO_CROP else None, _to_date(r["plantio"]))
+            for i, r in enumerate(records)
+        ])
+        problems = fazenda.problems()
+        blocking = [p for p in problems if "maior que zero" in p or "data do plantio" in p or "futuro" in p
+                    or "Nenhum" in p]
+        for p in problems:
+            (st.error if p in blocking else st.warning)(p)
+        s1, s2 = st.columns(2)
+        if s1.button("Salvar a fazenda", type="primary", disabled=bool(blocking) or total <= 0,
+                     key=f"fazenda_salvar_{location.location_id}"):
+            save_fazenda(location.location_id, fazenda)
+            st.session_state.pop(draft_key, None)
+            st.rerun()
+        if faz is not None and s2.button("Apagar os talhões", key=f"fazenda_apagar_{location.location_id}"):
+            clear_fazenda(location.location_id)
+            st.session_state.pop(draft_key, None)
+            st.rerun()
+        st.caption("Fica só neste computador. A área de cada talhão em hectares; a data do plantio só para quem tem "
+                   "cultura plantada hoje.")
 
 
 # --- chuva -------------------------------------------------------------------------
@@ -349,6 +446,7 @@ def home_page() -> None:
     today = date.today()
     _roca_section(location, roca)
     location, roca = current_location()  # o seletor de exemplo pode ter mudado o local
+    _farm_section(location)
     profile = soil_profile(location)
     results = evaluate(profile)
     theme.divider()

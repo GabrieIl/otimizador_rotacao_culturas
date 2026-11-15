@@ -274,7 +274,7 @@ seções 1.4 a 1.8). Detalhes em [features/03-perfil-do-local.md](features/03-pe
   modelo.
 - Detalhes em [features/07-agua-e-insights.md](features/07-agua-e-insights.md).
 
-### Culturas do agricultor familiar (Feature 8)
+### Culturas do agricultor familiar (Feature 9)
 
 - **24 culturas em 6 grupos:** grãos, forrageiras, raízes, hortaliças de folha, hortaliças de alto valor e
   frutas.
@@ -283,8 +283,19 @@ seções 1.4 a 1.8). Detalhes em [features/03-perfil-do-local.md](features/03-pe
   - **com rega:** o aviso mostra o plano de rega neste solo (intervalo máximo entre regas, litros por m² e água
     do ciclo).
 - **Para adicionar uma cultura,** ela precisa estar em todos os pontos da tabela de
-  [features/08-novas-culturas.md](features/08-novas-culturas.md). O teste `tests/test_culturas_conectadas.py`
+  [features/09-novas-culturas.md](features/09-novas-culturas.md). O teste `tests/test_culturas_conectadas.py`
   aponta o que faltar.
+
+### Talhões e o plano de rotação (Feature 10)
+
+- **Início:** o produtor informa a área da fazenda e os talhões (área, cultura de hoje e data do plantio).
+  Fica em `data/fazenda/`, só neste computador.
+- **Ranking:** gerado de todas as combinações de 1 a 3 culturas de sequeiro que cumprem "precisa ter" e
+  "não pode ter". Mostra as 5 melhores, mais "como planta hoje" para comparar.
+- **"O plano da fazenda":** quadro com os talhões em proporção à área. O clique abre o calendário do talhão,
+  com ícones do plantio à colheita e as próximas culturas. Tem os modos "rotação do ranking" e "como planta
+  hoje", e o plano sai em CSV.
+- Detalhes em [features/10-talhoes.md](features/10-talhoes.md).
 
 ---
 
@@ -305,6 +316,8 @@ seções 1.4 a 1.8). Detalhes em [features/03-perfil-do-local.md](features/03-pe
 | Mudar a régua da quebra de safra | `config/colheita.yaml` (vale para o aviso e o ranking) |
 | Ajustar Kc, raiz (Zr) e p das culturas | `config/agua.yaml` (`# CONFERIR`) |
 | Forçar nova leitura de um valor de lente | apague o PNG em `data/bronze/gibs_pixels/<camada>/` |
+| Apagar os talhões de um local | botão "Apagar os talhões" na Início, ou o JSON em `data/fazenda/` |
+| Mudar o ciclo (plantio à colheita) de uma cultura no plano | `ciclo_dias` em `config/culturas.yaml` (senão vale a soma das fases em `config/agua.yaml`) |
 | Adicionar uma cultura | registro em `config/culturas.yaml` + `config/aptidao.yaml` + `config/agua.yaml` + ícone em `app/icons.py` (+ `CropSpec` em `domain/presets.py` se for de sequeiro); rode `pytest tests/test_culturas_conectadas.py` |
 
 Comandos:

@@ -70,7 +70,7 @@ CAPIM_BUFFEL = _svg(
     f'<rect x="20" y="58.5" width="24" height="3" rx="1.5" fill="{_O}"/>'
 )
 
-# --- culturas adicionadas na Feature 8 ------------------------------------------------------
+# --- culturas adicionadas na Feature 9 ------------------------------------------------------
 
 _C = "#F2EFEA"  # creme (brilho e polpa)
 
