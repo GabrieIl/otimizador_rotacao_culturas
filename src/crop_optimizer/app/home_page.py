@@ -128,8 +128,9 @@ def _rain_section(location, today: date) -> None:
         series, date(ytd.year, 1, 1), 12, today, rain_chance(loc_json, today),
         onset=s.onset_date, normal_onset=s.reference_date, veranicos=veranicos, wet_mm=crit.wet_day_mm,
     )
-    st.markdown("**Calendário da chuva.** O fundo de cada dia mostra a chance de chover naquela data (1991-2020); "
-                "o círculo marca os dias que de fato choveram. Passe o mouse num dia para ver os milímetros.")
+    st.markdown("**Calendário da chuva.** A cor de cada dia mostra a chance de chover naquela data (1991-2020): "
+                "quanto mais escuro, mais anos choveu. O ícone mostra se de fato choveu e quanto (fraca, moderada "
+                "ou forte). Use as setas para ver outros meses e passe o mouse num dia para ver os milímetros.")
     components.rain_calendar(
         months,
         {"inicio": s.onset_date is not None and s.onset_date.year == ytd.year,
