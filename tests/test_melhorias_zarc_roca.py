@@ -381,3 +381,69 @@ def test_home_page_marks_assumed_reference_soil_values_distinctly() -> None:
 
     assert "(assumido)" not in by_label["Matéria orgânica"]["class_txt"]
     assert by_label["Acidez (pH em água)"]["tone"] != "neutro"
+
+
+def test_plantio_page_renders_rainfed_irrigated_and_zarc_data_without_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regressão: plantio_page deve calcular water antes de verdicts e cobrir culturas irrigadas e anuais."""
+    import streamlit as st
+    from streamlit.testing.v1 import AppTest
+
+    from crop_optimizer.analytics.rain_delay import ZarcStatusReport
+    from crop_optimizer.ingestion.power_temperature import TemperatureSeries
+    from crop_optimizer.ingestion.soilgrids import SoilGridsUnavailable
+    from crop_optimizer.ingestion.terrain import TerrainUnavailable
+
+    monkeypatch.setenv("CROP_OPT_DATA_DIR", str(tmp_path))
+    st.cache_data.clear()
+    st.cache_resource.clear()
+    try:
+        start = date(1991, 1, 1)
+        days = (date(2026, 11, 15) - start).days + 1
+        dates = np.array([start + timedelta(days=i) for i in range(days)], dtype="datetime64[D]")
+        months = np.array([(start + timedelta(days=i)).month for i in range(days)])
+        precip = np.where((months >= 1) & (months <= 4), 6.0, 0.2).astype(np.float64)
+        fake_rain = RainSeries(location_id="roca_2610707", dates=dates, precip_mm=precip, source="NASA POWER")
+        fake_temp = TemperatureSeries(
+            dates=dates,
+            tmax_c=np.full(days, 33.0),
+            tmin_c=np.full(days, 21.0),
+            source="NASA POWER",
+        )
+        roca_ok = Roca(lat=-9.39, lon=-40.5, municipio="Petrolina", uf="PE", ibge_code="2610707")
+
+        with (
+            patch("crop_optimizer.app.common.fetch_rain_series", return_value=fake_rain),
+            patch("crop_optimizer.app.common.fetch_temperature_series", return_value=fake_temp),
+            patch("crop_optimizer.analytics.rain_delay.zarc_windows_for", side_effect=OSError("offline")),
+            patch("crop_optimizer.app.common.fetch_soilgrids_nearby", side_effect=SoilGridsUnavailable("offline")),
+            patch("crop_optimizer.app.common.terrain_at", side_effect=TerrainUnavailable("offline")),
+        ):
+            for crop_id in ("milho_sertanejo", "tomate", "fava"):
+                at = AppTest.from_string(
+                    "import streamlit as st\n"
+                    "from crop_optimizer.app import dashboard, navigation\n"
+                    "p_page = st.Page(dashboard.plantio_page, title='Plantio', url_path='plantio', default=True)\n"
+                    "s_page = navigation.register('satelite', st.Page(dashboard.satellite_page, title='Sat', url_path='satelite'))\n"
+                    "st.navigation([p_page, s_page], position='top').run()\n",
+                    default_timeout=60,
+                )
+                at.session_state["roca"] = roca_ok
+                at.session_state["cultura"] = crop_id
+                at.run()
+                assert not at.exception, f"Erro em plantio_page ({crop_id}): {at.exception}"
+
+        # Confere mensagem de _zarc_data para perene, anual fora da tábua e cultura irrigada
+        from crop_optimizer.app.dashboard import _zarc_data
+
+        empty_zarc = ZarcStatusReport(soil_group="tipo_2")
+        perene = _zarc_data("palma_forrageira", None, date(2026, 2, 1), empty_zarc, "Petrolina/PE")
+        anual_sem_zarc = _zarc_data("fava", None, date(2026, 2, 1), empty_zarc, "Petrolina/PE")
+        irrigada = _zarc_data("tomate", None, date(2026, 2, 1), empty_zarc, "Petrolina/PE")
+        assert "perene" in perene["detail"].lower()
+        assert "perene" not in anual_sem_zarc["detail"].lower()
+        assert "rega" in irrigada["detail"].lower()
+    finally:
+        st.cache_data.clear()
+        st.cache_resource.clear()

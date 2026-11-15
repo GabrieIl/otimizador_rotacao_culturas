@@ -305,10 +305,16 @@ def _zarc_data(
     filter_txt = f" ({', '.join(filters)})" if filters else ""
     source = f"ZARC {zarc_cfg['safra']} (MAPA/Embrapa), sequeiro · {place_name}{filter_txt}"
     if zarc_name is None:
+        if is_irrigated(crop_id):
+            detail = "Sem janela de sequeiro no ZARC — no semiárido, esta cultura vai com rega."
+        elif is_perennial(crop_id):
+            detail = "Esta cultura não tem janela anual na tábua do ZARC (é perene). O aviso usa só o risco do clima."
+        else:
+            detail = "Esta cultura não está na tábua anual do ZARC usada aqui para sequeiro. O aviso usa só o risco do clima."
         return {
             "has_window": False,
             "state_txt": "Sem janela oficial no ZARC",
-            "detail": "Esta cultura não tem janela anual na tábua do ZARC (é perene). O aviso usa só o risco do clima.",
+            "detail": detail,
             "source": source,
         }
     if zarc_res.zarc_error:
@@ -520,13 +526,24 @@ def plantio_page() -> None:
         soil_group=soil_group,
         cycle_code=cycle_code,
     )
-    names = crop_names()
+    raw_names = crop_names()
+    order = ordered_ids()
+    crop_order = [c for c in order if c in raw_names] + [c for c in raw_names if c not in order]
+    names = {c: raw_names[c] for c in crop_order}
+    texture_group = soil_group
+    veranico_typical = veranico.typical_longest if veranico is not None and veranico.seasons_with_onset else None
+    try:
+        water = water_by_crop(loc_json, as_of, texture_group, profile.depth_m, tuple(names))
+    except (RainDataUnavailable, TemperatureUnavailable) as exc:
+        water = None
+        st.warning(f"Não foi possível calcular a água da roça: {exc}")
+
     windows = {cw.crop_id: cw for cw in zarc_res.crop_windows}
     zarc_crops = set(zarc_cfg["culturas"])
     verdicts = {}
     for crop_id in names:
         if is_irrigated(crop_id):
-            plan = water[crop_id][2] if water is not None else None
+            plan = water[crop_id][2] if water is not None and crop_id in water else None
             verdicts[crop_id] = irrigated_verdict(crop_id, names[crop_id], plan)
             continue
         row = df_matrix.filter((df_matrix["crop_id"] == crop_id) & (df_matrix["delay_days"] == delay))
@@ -542,14 +559,6 @@ def plantio_page() -> None:
     chosen = components.crop_combo(items, chosen if chosen in names else next(iter(names)), key="combo_plantio")
     store("cultura", chosen)
     verdict = verdicts[chosen]
-
-    texture_group = soil_group
-    veranico_typical = veranico.typical_longest if veranico is not None and veranico.seasons_with_onset else None
-    try:
-        water = water_by_crop(loc_json, as_of, texture_group, profile.depth_m, tuple(names))
-    except (RainDataUnavailable, TemperatureUnavailable) as exc:
-        water = None
-        st.warning(f"Não foi possível calcular a água da roça: {exc}")
 
     place_name = f"{rain_location.name}/{rain_location.state}" if rain_location.state else rain_location.name
     st.html('<div style="height:.75rem"></div>')
