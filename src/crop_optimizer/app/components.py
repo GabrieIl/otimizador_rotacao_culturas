@@ -10,6 +10,8 @@ from typing import Any
 
 import streamlit as st
 
+from crop_optimizer.config import load_yaml_config
+
 # --- base comum ------------------------------------------------------------------
 
 _BASE_CSS = """
@@ -28,12 +30,23 @@ _BASE_CSS = """
 .tone-vermelho { background:var(--t-verm); color:var(--verm); }
 .tone-espera, .tone-neutro { background:var(--t-espera); color:var(--pet2); }
 .ico svg { width:100%; height:100%; display:block; }
+.grupo { font-family: 'IBM Plex Mono', monospace; font-size:.66rem; letter-spacing:.08em; text-transform:uppercase;
+  color:var(--sub); margin:.7rem .2rem .25rem .2rem; }
+.grupo:first-child { margin-top:.1rem; }
 button { font-family: Inter, sans-serif; }
 @media (prefers-reduced-motion: no-preference) { .anim { transition: all 160ms ease-out; } }
 """
 
 _JS_HELPERS = """
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function withGroups(items, render) {
+  let last = null;
+  return items.map((it) => {
+    const head = it.group && it.group !== last ? `<p class="grupo">${esc(it.group)}</p>` : '';
+    last = it.group || last;
+    return head + render(it);
+  }).join('');
+}
 function rootOf(parentElement) {
   let root = parentElement.querySelector('.acaua-root');
   if (!root) { root = document.createElement('div'); root.className = 'acaua-root'; parentElement.appendChild(root); }
@@ -64,7 +77,7 @@ def _component(name: str, css: str, js_body: str):
 _CARDS = _component(
     "cards_cultura",
     """
-.lista { display:flex; flex-direction:column; gap:.6rem; }
+.lista { display:flex; flex-direction:column; gap:.5rem; max-height:640px; overflow-y:auto; padding-right:.35rem; }
 .card { display:flex; align-items:center; gap:.85rem; width:100%; text-align:left; cursor:pointer;
   background:rgba(255,255,255,.45); border:1px solid var(--linha); border-radius:.8rem; padding:.7rem .9rem; color:var(--pet); }
 .card:hover { background:rgba(255,255,255,.8); }
@@ -77,10 +90,12 @@ export default function(component) {
   const { data, setStateValue, parentElement } = component;
   const root = rootOf(parentElement);
   const sel = data.selected;
-  root.innerHTML = '<div class="lista">' + data.items.map((it) => `
+  root.innerHTML = '<div class="lista">' + withGroups(data.items, (it) => `
     <button class="card anim ${it.id === sel ? 'sel' : ''}" data-id="${esc(it.id)}" aria-pressed="${it.id === sel}">
       <span class="ico">${it.icon}</span><span class="nome">${esc(it.name)}</span>
-      <span class="pill tone-${esc(it.tone)}">${esc(it.status)}</span></button>`).join('') + '</div>';
+      <span class="pill tone-${esc(it.tone)}">${esc(it.status)}</span></button>`) + '</div>';
+  const selBtn = root.querySelector('.card.sel');
+  if (selBtn) { const lista = root.querySelector('.lista'); lista.scrollTop = Math.max(0, selBtn.offsetTop - lista.offsetTop - 60); }
   root.querySelectorAll('.card').forEach((b) => { b.onclick = () => setStateValue('selected', b.dataset.id); });
 }
 """,
@@ -195,7 +210,8 @@ _COMBO = _component(
 .nome { font-family: Montserrat, Inter, sans-serif; font-weight:700; font-size:1.05rem; flex:1; }
 .seta { width:10px; height:10px; border-right:2px solid var(--pet); border-bottom:2px solid var(--pet); transform: rotate(45deg); margin:0 .3rem .25rem 0; }
 .aberto .seta { transform: rotate(-135deg); margin-bottom:-.2rem; }
-.opcoes { display:none; margin-top:.4rem; background:#fff; border:1px solid var(--linha); border-radius:.8rem; padding:.35rem; }
+.opcoes { display:none; margin-top:.4rem; background:#fff; border:1px solid var(--linha); border-radius:.8rem; padding:.35rem;
+  max-height:440px; overflow-y:auto; }
 .aberto .opcoes { display:block; }
 .op { display:flex; align-items:center; gap:.8rem; width:100%; background:none; border:none; border-radius:.6rem;
   padding:.5rem .6rem; cursor:pointer; color:var(--pet); text-align:left; }
@@ -213,10 +229,10 @@ export default function(component) {
     <button class="atual" aria-haspopup="listbox" aria-expanded="false">
       <span class="ico">${cur.icon}</span><span class="nome">${esc(cur.name)}</span>
       <span class="pill tone-${esc(cur.tone)}">${esc(cur.status)}</span><span class="seta"></span></button>
-    <div class="opcoes" role="listbox">${data.items.map((it) => `
+    <div class="opcoes" role="listbox">${withGroups(data.items, (it) => `
       <button class="op ${it.id === cur.id ? 'sel' : ''}" role="option" data-id="${esc(it.id)}">
         <span class="ico">${it.icon}</span><span class="nome">${esc(it.name)}</span>
-        <span class="pill tone-${esc(it.tone)}">${esc(it.status)}</span></button>`).join('')}</div></div>`;
+        <span class="pill tone-${esc(it.tone)}">${esc(it.status)}</span></button>`)}</div></div>`;
   const combo = root.querySelector('.combo'), btn = root.querySelector('.atual');
   btn.onclick = () => { const open = !combo.classList.contains('aberto'); combo.classList.toggle('aberto', open); btn.setAttribute('aria-expanded', open); };
   root.querySelectorAll('.op').forEach((o) => { o.onclick = () => { combo.classList.remove('aberto'); setStateValue('selected', o.dataset.id); }; });
@@ -237,69 +253,174 @@ def crop_combo(items: list[dict], selected: str, key: str) -> str:
 _CALENDAR = _component(
     "calendario_chuva",
     """
-.meses { display:grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap:1.1rem 1.4rem; }
-.mes h4 { font-family: Montserrat, Inter, sans-serif; font-size:.9rem; font-weight:700; margin:0 0 .35rem 0; text-transform: capitalize; }
-.grade { display:grid; grid-template-columns: repeat(7, 1fr); gap:3px; }
-.sem { font-size:.62rem; color:var(--sub); text-align:center; padding-bottom:2px; font-family:'IBM Plex Mono', monospace; }
-.dia { position:relative; aspect-ratio:1/1; border-radius:5px; display:flex; align-items:center; justify-content:center; }
-.dia .n { position:absolute; top:1px; left:3px; font-size:.55rem; color:rgba(22,48,55,.55); }
-.dia.futuro .n { color:rgba(22,48,55,.35); }
-.dia.sem_dado { background-image: repeating-linear-gradient(45deg, rgba(22,48,55,.08) 0 2px, transparent 2px 5px) !important; }
-.gota { width:62%; height:62%; border-radius:50%; background:var(--pet); display:flex; align-items:center; justify-content:center; }
-.gota.m { width:76%; height:76%; } .gota.g { width:90%; height:90%; }
-.gota::after { content:""; width:28%; height:48%; border-right:2px solid #fff; border-bottom:2px solid #fff; transform: translateY(-12%) rotate(45deg); }
-.dia.veranico { box-shadow: inset 0 -4px 0 0 rgba(170,40,30,.75); }
+.nav { display:grid; grid-template-columns: auto 1fr auto; gap:.9rem; align-items:center; }
+.seta { width:40px; height:40px; border-radius:50%; border:1.5px solid var(--pet); background:var(--creme); color:var(--pet);
+  display:flex; align-items:center; justify-content:center; cursor:pointer; padding:0; }
+.seta svg { width:20px; height:20px; }
+.seta:hover:not(:disabled) { background:var(--pet); color:var(--creme); }
+.seta:focus-visible { outline:2.5px solid var(--terra); outline-offset:2px; }
+.seta:disabled { opacity:.3; cursor:default; }
+.meses { display:grid; grid-template-columns: repeat(var(--por), minmax(0, 1fr)); gap:1.6rem; }
+.mes h4 { font-family: Montserrat, Inter, sans-serif; font-size:1.05rem; font-weight:700; margin:0 0 .5rem 0; text-transform: capitalize; }
+.grade { display:grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap:4px; }
+.sem { font-size:.7rem; color:var(--sub); text-align:center; padding-bottom:3px; font-family:'IBM Plex Mono', monospace; }
+.dia { position:relative; aspect-ratio: 1 / 1.1; border-radius:6px; box-shadow: inset 0 0 0 1px rgba(22,48,55,.10); display:flex; flex-direction:column; align-items:stretch; overflow:visible; }
+.dia .n { font-size:.72rem; font-weight:600; line-height:1; padding:4px 0 0 5px; }
+.dia.claro .n { color:var(--pet); } .dia.escuro .n { color:#fff; }
+.dia.futuro .n { opacity:.6; }
+.dia.sem_dado { background-image: repeating-linear-gradient(45deg, rgba(22,48,55,.14) 0 2px, transparent 2px 6px) !important; }
+.tempo { flex:1; display:flex; align-items:center; justify-content:center; padding:1px 2px 4px 2px; min-height:0; }
+.tempo svg { width:78%; max-width:34px; height:auto; display:block; }
+.dia.veranico { box-shadow: inset 0 -5px 0 0 var(--verm), inset 0 0 0 1px rgba(22,48,55,.10); }
 .dia.inicio { outline: 2.5px solid var(--verde); outline-offset: 1px; }
 .dia.normal { outline: 2px dashed var(--pet); outline-offset: 1px; }
-.dia.hoje { outline: 2.5px solid var(--terra); outline-offset: 1px; }
-.legenda { display:flex; flex-wrap:wrap; gap:.6rem 1.4rem; margin-top:1rem; font-size:.8rem; color:var(--pet2); align-items:center; }
+.dia.hoje { outline: 3px solid var(--terra); outline-offset: 1px; }
+.legenda { display:flex; flex-wrap:wrap; gap:.9rem 1.8rem; margin-top:1.3rem; font-size:.84rem; color:var(--pet2); align-items:flex-start; }
+.bloco { display:flex; flex-direction:column; gap:.4rem; }
+.bloco > b { font-weight:600; color:var(--pet); }
+.escala { display:flex; gap:3px; }
+.escala .f { display:flex; flex-direction:column; align-items:center; gap:3px; }
+.escala .c { width:34px; height:22px; border-radius:4px; }
+.escala small { font-family:'IBM Plex Mono', monospace; font-size:.68rem; color:var(--sub); }
+.icones { display:flex; flex-wrap:wrap; gap:.4rem 1.1rem; }
 .leg { display:flex; align-items:center; gap:.45rem; }
-.sw { width:18px; height:18px; border-radius:4px; display:inline-flex; align-items:center; justify-content:center; }
-.escala { display:flex; gap:2px; }
-.escala span { width:14px; height:14px; border-radius:3px; }
-@media (max-width: 640px) { .meses { grid-template-columns: 1fr 1fr; gap:.9rem .8rem; } .dia .n { font-size:.48rem; } .grade { gap:2px; } }
+.leg .tempo-leg { width:34px; height:30px; border-radius:5px; background:#8DB0B8; display:flex; align-items:center; justify-content:center; }
+.leg .tempo-leg svg { width:26px; height:auto; }
+.sw { width:22px; height:22px; border-radius:5px; display:inline-flex; background:#C9DADD; flex:none; }
+@media (max-width: 640px) { .dia .n { font-size:.66rem; } .nav { gap:.5rem; } .seta { width:34px; height:34px; } }
 """,
     """
+// 5 faixas de chance, de "quase nunca" a "quase sempre" (em quantos de cada 10 anos chove no dia).
+const FAIXAS = [
+  { ate: 1,  cor: '#EEF2F1', txt: 'claro',  rot: '0-1' },
+  { ate: 3,  cor: '#C9DADD', txt: 'claro',  rot: '2-3' },
+  { ate: 5,  cor: '#8DB0B8', txt: 'claro',  rot: '4-5' },
+  { ate: 7,  cor: '#4F7F8B', txt: 'escuro', rot: '6-7' },
+  { ate: 10, cor: '#1F4A55', txt: 'escuro', rot: '8-10' },
+];
+const faixa = (p) => { const n = Math.round(p * 10); return FAIXAS.find((f) => n <= f.ate); };
+
+// Ícones no estilo da previsão do tempo: nuvem + riscos de chuva (com contorno branco para aparecer em qualquer fundo).
+const NUVEM = 'M8.5 17.5h15.2a4.1 4.1 0 0 0 .4-8.2 6.6 6.6 0 0 0-12.6-1.4A4.9 4.9 0 0 0 8.5 17.5z';
+const risco = (x, y, len) => {
+  const x2 = (x - len * 0.35).toFixed(1), y2 = (y + len).toFixed(1);
+  return `<line x1="${x}" y1="${y}" x2="${x2}" y2="${y2}" stroke="#fff" stroke-width="4" stroke-linecap="round"/>`
+       + `<line x1="${x}" y1="${y}" x2="${x2}" y2="${y2}" stroke="#163037" stroke-width="2" stroke-linecap="round"/>`;
+};
+const ICONES = {
+  fraca: [false, [[13.5, 21.5, 2.5], [20, 21.5, 2.5]]],
+  moderada: [false, [[11.5, 21, 7], [17, 21, 7], [22.5, 21, 7]]],
+  forte: [true, [[10, 20.5, 8], [14.5, 20.5, 8], [19, 20.5, 8], [23.5, 20.5, 8]]],
+};
+function icone(tipo) {
+  const [escura, riscos] = ICONES[tipo];
+  const nuvem = escura
+    ? `<path d="${NUVEM}" fill="#163037" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/>`
+    : `<path d="${NUVEM}" fill="#fff" stroke="#163037" stroke-width="1.6" stroke-linejoin="round"/>`;
+  return `<svg viewBox="2 3 28 28" aria-hidden="true">${nuvem}${riscos.map((r) => risco(...r)).join('')}</svg>`;
+}
+const NOME = { fraca: 'chuva fraca', moderada: 'chuva moderada', forte: 'chuva forte' };
+const SETA_E = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>';
+const SETA_D = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>';
+const SEMANA = ['D','S','T','Q','Q','S','S'];
+
+function mesHtml(m, lim) {
+  const vazios = Array(m.offset).fill('<span></span>').join('');
+  const dias = m.dias.map((d) => {
+    const f = faixa(d.p);
+    const chance = Math.round(d.p * 10);
+    let tipo = '';
+    if (d.s === 'chuva') tipo = d.mm >= lim.forte ? 'forte' : (d.mm >= lim.moderada ? 'moderada' : 'fraca');
+    let tip = `${d.d} ${m.titulo}: chove neste dia em ${chance} de cada 10 anos`;
+    if (d.s === 'chuva') tip += ` · choveu ${d.mm} mm (${NOME[tipo]})`;
+    if (d.s === 'seco') tip += ` · não choveu (${d.mm} mm)`;
+    if (d.s === 'sem_dado') tip += ' · sem dado ainda';
+    if (d.m.includes('inicio')) tip += ' · a chuva firmou';
+    if (d.m.includes('normal')) tip += ' · início normal da chuva';
+    if (d.m.includes('veranico')) tip += ' · veranico';
+    if (d.m.includes('hoje')) tip += ' · hoje';
+    const cls = ['dia', d.s, f.txt, ...d.m].join(' ');
+    return `<span class="${esc(cls)}" title="${esc(tip)}" style="background-color:${f.cor}">`
+         + `<span class="n">${d.d}</span><span class="tempo">${tipo ? icone(tipo) : ''}</span></span>`;
+  }).join('');
+  return `<div class="mes"><h4>${esc(m.titulo)}</h4><div class="grade">`
+       + `${SEMANA.map((s) => `<span class="sem">${s}</span>`).join('')}${vazios}${dias}</div></div>`;
+}
+
+// Mês que abre o calendário: o de hoje; senão, o último com dado observado.
+function mesFoco(meses) {
+  const h = meses.findIndex((m) => m.dias.some((d) => d.m.includes('hoje')));
+  if (h >= 0) return h;
+  for (let i = meses.length - 1; i >= 0; i--) if (meses[i].dias.some((d) => d.s !== 'futuro')) return i;
+  return 0;
+}
+
 export default function(component) {
   const { data, parentElement } = component;
   const root = rootOf(parentElement);
-  const bg = (p) => `rgba(22,48,55,${(0.04 + 0.46 * p).toFixed(3)})`;
-  const semana = ['D','S','T','Q','Q','S','S'];
-  const meses = data.meses.map((m) => {
-    const vazios = Array(m.offset).fill('<span></span>').join('');
-    const dias = m.dias.map((d) => {
-      const cls = ['dia', d.s, ...d.m].join(' ');
-      const chance = Math.round(d.p * 10);
-      let tip = `${d.d} ${m.titulo}: chove neste dia em ${chance} de cada 10 anos`;
-      if (d.s === 'chuva' || d.s === 'seco') tip += ` · choveu ${d.mm} mm`;
-      if (d.s === 'sem_dado') tip += ' · sem dado ainda';
-      if (d.m.includes('inicio')) tip += ' · a chuva firmou';
-      if (d.m.includes('normal')) tip += ' · início normal da chuva';
-      if (d.m.includes('veranico')) tip += ' · veranico';
-      let gota = '';
-      if (d.s === 'chuva') { const t = d.mm >= 25 ? 'g' : (d.mm >= 10 ? 'm' : ''); gota = `<span class="gota ${t}"></span>`; }
-      return `<span class="${esc(cls)}" title="${esc(tip)}" style="background:${bg(d.p)}"><span class="n">${d.d}</span>${gota}</span>`;
-    }).join('');
-    return `<div class="mes"><h4>${esc(m.titulo)}</h4><div class="grade">${semana.map((s) => `<span class="sem">${s}</span>`).join('')}${vazios}${dias}</div></div>`;
-  }).join('');
-  const esc5 = [0.1,0.3,0.5,0.7,0.9].map((p) => `<span style="background:${bg(p)}"></span>`).join('');
+  const meses = data.meses || [];
+  const lim = data.limites || { moderada: 10, forte: 25 };
   const L = data.legenda || {};
-  root.innerHTML = `<div class="meses">${meses}</div>
-   <div class="legenda">
-     <span class="leg"><span class="escala">${esc5}</span>chance de chover no dia (${esc(L.periodo || '1991-2020')}): de pouca a muita</span>
-     <span class="leg"><span class="sw" style="background:rgba(22,48,55,.1)"><span class="gota" style="width:70%;height:70%"></span></span>choveu (maior = mais chuva)</span>
-     ${L.veranico ? '<span class="leg"><span class="sw" style="box-shadow: inset 0 -4px 0 0 rgba(170,40,30,.75); background:rgba(22,48,55,.1)"></span>veranico</span>' : ''}
-     ${L.inicio ? '<span class="leg"><span class="sw" style="outline:2.5px solid #266F49"></span>a chuva firmou</span>' : ''}
-     ${L.normal ? '<span class="leg"><span class="sw" style="outline:2px dashed #163037"></span>início normal</span>' : ''}
-     <span class="leg"><span class="sw" style="outline:2.5px solid #9C6346"></span>hoje</span>
+  const assinatura = meses.length + '|' + (meses[0] ? meses[0].titulo : '');
+  const st = parentElement.__acauaCal || (parentElement.__acauaCal = {});
+  if (st.assinatura !== assinatura) { st.assinatura = assinatura; st.ini = null; }
+
+  const porPagina = () => {
+    const w = root.getBoundingClientRect().width || window.innerWidth;
+    return w < 560 ? 1 : 3;
+  };
+
+  const escala = FAIXAS.map((f) => `<span class="f"><span class="c" style="background:${f.cor}"></span><small>${f.rot}</small></span>`).join('');
+  const icones = ['fraca', 'moderada', 'forte'].map((t) => {
+    const faixaMm = t === 'fraca' ? `menos de ${lim.moderada} mm` : (t === 'moderada' ? `${lim.moderada} a ${lim.forte} mm` : `${lim.forte} mm ou mais`);
+    return `<span class="leg"><span class="tempo-leg">${icone(t)}</span>${NOME[t]} (${faixaMm})</span>`;
+  }).join('');
+  const legenda = `<div class="legenda">
+     <div class="bloco"><b>Chance de chover no dia</b><span class="escala">${escala}</span>
+       <small style="color:var(--sub)">em quantos de cada 10 anos choveu nesta data (${esc(L.periodo || '1991-2020')})</small></div>
+     <div class="bloco"><b>Quanto choveu de fato</b><span class="icones">${icones}</span>
+       <small style="color:var(--sub)">dia sem ícone: não choveu</small></div>
+     <div class="bloco"><b>Marcas</b><span class="icones">
+       ${L.veranico ? '<span class="leg"><span class="sw" style="box-shadow: inset 0 -5px 0 0 #AA281E"></span>veranico</span>' : ''}
+       ${L.inicio ? '<span class="leg"><span class="sw" style="outline:2.5px solid #266F49;outline-offset:1px"></span>a chuva firmou</span>' : ''}
+       ${L.normal ? '<span class="leg"><span class="sw" style="outline:2px dashed #163037;outline-offset:1px"></span>início normal</span>' : ''}
+       <span class="leg"><span class="sw" style="outline:3px solid #9C6346;outline-offset:1px"></span>hoje</span></span></div>
    </div>`;
+
+  function desenhar() {
+    const por = Math.min(porPagina(), Math.max(1, meses.length));
+    const maxIni = Math.max(0, meses.length - por);
+    if (st.ini == null) st.ini = mesFoco(meses) - (por === 3 ? 1 : 0);
+    st.ini = Math.max(0, Math.min(maxIni, st.ini));
+    st.por = por;
+    const vis = meses.slice(st.ini, st.ini + por);
+    const de = vis[0] ? vis[0].titulo : '', ate = vis.length ? vis[vis.length - 1].titulo : '';
+    root.innerHTML = `<div class="nav">
+        <button class="seta anim" data-dir="-1" aria-label="Meses anteriores" ${st.ini <= 0 ? 'disabled' : ''}>${SETA_E}</button>
+        <div class="meses" style="--por:${por}" aria-live="polite" aria-label="${esc(de === ate ? de : de + ' a ' + ate)}">${vis.map((m) => mesHtml(m, lim)).join('')}</div>
+        <button class="seta anim" data-dir="1" aria-label="Próximos meses" ${st.ini >= maxIni ? 'disabled' : ''}>${SETA_D}</button>
+      </div>${legenda}`;
+    root.querySelectorAll('.seta').forEach((b) => {
+      b.onclick = () => { st.ini += Number(b.dataset.dir) * por; desenhar(); };
+    });
+  }
+  desenhar();
+
+  if (!st.obs && typeof ResizeObserver !== 'undefined') {
+    st.obs = new ResizeObserver(() => { if (st.redesenhar && porPagina() !== st.por) st.redesenhar(); });
+    st.obs.observe(root);
+  }
+  st.redesenhar = desenhar;
 }
 """,
 )
 
 
 def rain_calendar(months: list[dict], legend: dict, key: str) -> None:
-    _CALENDAR(data={"meses": months, "legenda": legend}, key=key)
+    """Calendário de chuva: 3 meses por vez, com setas para navegar (a navegação fica no navegador)."""
+    cfg = load_yaml_config("chuva").get("calendario", {})
+    limits = {"moderada": float(cfg["chuva_moderada_mm"]), "forte": float(cfg["chuva_forte_mm"])}
+    _CALENDAR(data={"meses": months, "legenda": legend, "limites": limits}, key=key)
 
 
 # --- 5. comparação do solo com a região -----------------------------------------------
@@ -361,17 +482,23 @@ _ZARC = _component(
     """
 .box { background:#fff; border:1px solid var(--linha); border-radius:1rem; padding:1.2rem 1.3rem; }
 .estado { font-family: Montserrat, Inter, sans-serif; font-weight:700; font-size:1.15rem; margin:.2rem 0 .8rem 0; }
-.linha { position:relative; display:grid; grid-template-columns: repeat(36, 1fr); gap:2px; margin-top:22px; }
-.c { height:30px; border-radius:3px; background:var(--areia); }
+.anos { display:flex; flex-direction:column; gap:.85rem; margin-top:.9rem; }
+.ano-row { display:grid; grid-template-columns: 3rem 1fr; gap:.55rem; align-items:start; }
+.ano-tag { font-family:'IBM Plex Mono', monospace; font-weight:700; font-size:.78rem; color:var(--pet);
+  background:var(--areia); border-radius:.45rem; padding:.38rem 0; text-align:center; margin-top:18px; }
+.ano-track { min-width:0; }
+.linha { position:relative; display:grid; grid-template-columns: repeat(36, 1fr); gap:2px; margin-top:18px; }
+.c { height:28px; border-radius:3px; background:var(--areia); }
 .r20 { background:#9CC3AC; } .r30 { background:#EDD39B; } .r40 { background:#E6BDB8; }
-.meses { display:grid; grid-template-columns: repeat(12, 1fr); margin-top:4px; font-size:.68rem; color:var(--sub); font-family:'IBM Plex Mono', monospace; text-transform: capitalize; }
-.hoje { position:absolute; top:-22px; transform: translateX(-50%); display:flex; flex-direction:column; align-items:center; font-size:.68rem; color:var(--terra); font-weight:600; }
-.hoje::after { content:""; width:2px; height:44px; background:var(--terra); margin-top:2px; }
+.meses { display:grid; grid-template-columns: repeat(12, 1fr); margin-top:4px; font-size:.66rem; color:var(--sub); font-family:'IBM Plex Mono', monospace; text-transform: capitalize; }
+.hoje { position:absolute; top:-20px; transform: translateX(-50%); display:flex; flex-direction:column; align-items:center; font-size:.66rem; color:var(--terra); font-weight:600; z-index:2; pointer-events:none; }
+.hoje::after { content:""; width:2px; height:32px; background:var(--terra); margin-top:2px; }
 .leg { display:flex; flex-wrap:wrap; gap:.4rem 1rem; margin-top:.9rem; font-size:.78rem; color:var(--pet2); }
 .leg span { display:inline-flex; align-items:center; gap:.35rem; }
 .leg i { width:14px; height:14px; border-radius:3px; display:inline-block; }
 .nao { color:var(--pet2); font-size:.95rem; line-height:1.5; }
 .fonte { color:var(--sub); font-size:.74rem; margin-top:.7rem; font-family:'IBM Plex Mono', monospace; }
+@media (max-width: 520px) { .ano-row { grid-template-columns: 1fr; gap:.25rem; } .ano-tag { margin-top:0; width:fit-content; padding:.2rem .55rem; } }
 """,
     """
 export default function(component) {
@@ -382,12 +509,18 @@ export default function(component) {
     root.innerHTML = `<div class="box"><p class="rot">Janela oficial de plantio</p><p class="estado">${esc(d.state_txt)}</p><p class="nao">${esc(d.detail)}</p><p class="fonte">${esc(d.source)}</p></div>`;
     return;
   }
-  const cells = d.decendios.map((r, i) => `<span class="c ${r ? 'r' + r : ''}" title="${esc(d.labels[i])}${r ? ' · risco ' + r + '%' : ' · não indicado'}"></span>`).join('');
-  const hoje = d.today_pos == null ? '' : `<span class="hoje" style="left:${d.today_pos}%">hoje</span>`;
-  root.innerHTML = `<div class="box"><p class="rot">Janela oficial de plantio · ZARC</p>
+  const years = (d.years && d.years.length) ? d.years : [{ year: '', decendios: d.decendios, labels: d.labels, today_pos: d.today_pos }];
+  const months = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'].map((m) => `<span>${m}</span>`).join('');
+  const rowsHtml = years.map((yr) => {
+    const cells = yr.decendios.map((r, i) => `<span class="c ${r ? 'r' + r : ''}" title="${esc(yr.labels[i])}${r ? ' · risco ' + r + '%' : ' · não indicado'}"></span>`).join('');
+    const hoje = yr.today_pos == null ? '' : `<span class="hoje" style="left:${yr.today_pos}%">hoje</span>`;
+    const track = `<div class="ano-track"><div class="linha">${hoje}${cells}</div><div class="meses">${months}</div></div>`;
+    return yr.year ? `<div class="ano-row"><span class="ano-tag">${esc(yr.year)}</span>${track}</div>` : track;
+  }).join('');
+  const title = d.horizon_label ? `Janela oficial de plantio · ZARC (${esc(d.horizon_label)})` : 'Janela oficial de plantio · ZARC';
+  root.innerHTML = `<div class="box"><p class="rot">${title}</p>
     <p class="estado">${esc(d.state_txt)}</p>
-    <div class="linha">${hoje}${cells}</div>
-    <div class="meses">${['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'].map((m) => `<span>${m}</span>`).join('')}</div>
+    <div class="anos">${rowsHtml}</div>
     <div class="leg"><span><i class="r20"></i>risco de 20%</span><span><i class="r30"></i>30%</span><span><i class="r40"></i>40%</span><span><i style="background:#E8E2D6"></i>não indicado</span></div>
     <p class="fonte">${esc(d.source)}</p></div>`;
 }
@@ -460,7 +593,7 @@ export default function(component) {
   root.innerHTML = '<div class="lista">' + data.items.map((it, i) => `
     <div class="item ${i === 0 ? 'top' : ''} ${it.id === data.detail ? 'aberto' : ''}">
       <div class="pos">${i + 1}</div>
-      <div><p class="nome">${esc(it.name)}</p>
+      <div><p class="nome">${esc(it.name)}${it.tag ? ` <span class="pill tone-neutro">${esc(it.tag === 'hoje' ? 'como planta hoje' : it.tag)}</span>` : ''}</p>
         <div class="chips"><span>colhe em <b>${it.aguenta} de 10 anos</b></span><span>${esc(it.risco)}</span>
           <span>grãos <b>${esc(it.graos)}</b></span><span>forragem <b>${esc(it.forragem)}</b></span>
           ${it.renda ? `<span>renda <b>${esc(it.renda)}</b></span>` : ''}
@@ -528,3 +661,120 @@ export default function(component) {
 
 def terrain_panel(data: dict[str, Any], key: str) -> None:
     _TERRAIN(data=data, key=key)
+
+
+# --- 10. quadro da fazenda (talhões) -------------------------------------------------------------
+
+_FARM = _component(
+    "fazenda_talhoes",
+    """
+.fazenda { position:relative; width:100%; aspect-ratio: 100 / 56; min-height:280px; background:var(--creme);
+  border:2px dashed rgba(22,48,55,.35); border-radius:1rem; padding:6px; }
+.talhao { position:absolute; border-radius:.7rem; overflow:hidden; cursor:pointer; border:1.5px solid var(--linha);
+  background-color:var(--areia); color:var(--pet); text-align:left; padding:.55rem .65rem; display:flex; flex-direction:column;
+  justify-content:space-between; font-family:Inter, sans-serif;
+  background-image: repeating-linear-gradient(-32deg, rgba(156,99,70,.10) 0 2px, transparent 2px 11px); }
+.talhao:hover { border-color:var(--terra); }
+.talhao.sel { border:3px solid var(--terra); background-color:#fff; box-shadow: 0 0 0 3px rgba(156,99,70,.15); }
+.talhao.resto { cursor:default; background-color:transparent; border-style:dashed;
+  background-image: repeating-linear-gradient(45deg, rgba(22,48,55,.07) 0 1px, transparent 1px 8px); }
+.talhao .topo { display:flex; justify-content:space-between; gap:.4rem; align-items:baseline; }
+.talhao .nome { font-family: Montserrat, Inter, sans-serif; font-weight:800; font-size:.95rem; line-height:1.1; }
+.talhao .ha { font-family:'IBM Plex Mono', monospace; font-size:.72rem; color:var(--sub); white-space:nowrap; }
+.talhao .meio { display:flex; align-items:center; gap:.5rem; min-height:0; }
+.talhao .ico { width:52px; aspect-ratio:1; flex:none; }
+.talhao.grande .ico { width:76px; }
+.talhao .cult { font-size:.82rem; line-height:1.25; }
+.talhao .cult b { display:block; font-size:.92rem; }
+.talhao.mini { padding:.4rem; }
+.talhao.mini .cult, .talhao.mini .ha { display:none; }
+.talhao.mini .nome { font-size:.74rem; }
+.talhao.mini .ico { width:30px; }
+@media (max-width: 640px) { .talhao .ico, .talhao.grande .ico { width:34px; } .talhao .cult { display:none; } }
+.legenda { font-size:.78rem; color:var(--sub); margin:.5rem 0 0 0; }
+""",
+    """
+export default function(component) {
+  const { data, setStateValue, parentElement } = component;
+  const root = rootOf(parentElement);
+  const sel = data.selected;
+  const cells = data.talhoes.map((t) => {
+    const [x, y, w, h] = t.rect;
+    const style = `left:calc(${x}% + 4px); top:calc(${y / 0.56}% + 4px); width:calc(${w}% - 8px); height:calc(${h / 0.56}% - 8px);`;
+    const mini = (w < 15 || h < 12) ? 'mini' : '';
+    const grande = (w * h) > 1300 ? 'grande' : '';
+    if (t.resto) return `<div class="talhao resto ${mini}" style="${style}"><div class="topo"><span class="nome">${esc(t.nome)}</span><span class="ha">${esc(t.area)}</span></div></div>`;
+    return `<button class="talhao anim ${t.id === sel ? 'sel' : ''} ${mini} ${grande}" style="${style}" data-id="${esc(t.id)}" aria-pressed="${t.id === sel}" title="${esc(t.nome)}: ${esc(t.crop || 'livre')}">
+      <div class="topo"><span class="nome">${esc(t.nome)}</span><span class="ha">${esc(t.area)}</span></div>
+      <div class="meio">${t.icon ? `<span class="ico">${t.icon}</span>` : ''}<span class="cult"><b>${esc(t.crop || 'Livre')}</b>${esc(t.label)}</span></div></button>`;
+  }).join('');
+  root.innerHTML = `<div class="fazenda" role="group" aria-label="Talhões da fazenda">${cells}</div>
+    <p class="legenda">${esc(data.legend)}</p>`;
+  root.querySelectorAll('button.talhao').forEach((b) => { b.onclick = () => setStateValue('selected', b.dataset.id); });
+}
+""",
+)
+
+
+def farm_board(data: dict[str, Any], selected: str, key: str) -> str:
+    """Desenho da fazenda com os talhões em proporção à área; devolve o talhão escolhido."""
+    current = _current(key, "selected", selected)
+    _FARM(data={**data, "selected": current}, key=key, default={"selected": current},
+          on_selected_change=lambda: None)
+    return current
+
+
+# --- 11. calendário de rotação de um talhão ----------------------------------------------------------
+
+_TCAL = _component(
+    "calendario_talhao",
+    """
+.cal { background:#fff; border:1px solid var(--linha); border-radius:1rem; padding:1.1rem 1.2rem; }
+h3 { font-family: Montserrat, Inter, sans-serif; font-size:1.3rem; font-weight:800; margin:.1rem 0 .2rem 0; }
+.sub { color:var(--pet2); font-size:.92rem; margin:0 0 .8rem 0; line-height:1.45; }
+.grade { overflow-x:auto; }
+.linha { display:grid; grid-template-columns: 3.4rem repeat(12, minmax(52px, 1fr)); gap:4px; margin-bottom:4px; min-width:720px; }
+.ano { font-family: Montserrat, Inter, sans-serif; font-weight:800; font-size:.95rem; display:flex; align-items:center; }
+.mes { position:relative; border-radius:.5rem; background:var(--creme); min-height:66px; padding:3px 3px 14px 3px;
+  display:flex; flex-wrap:wrap; align-content:flex-start; justify-content:center; gap:2px; }
+.mes .m { position:absolute; bottom:2px; left:0; right:0; text-align:center; font-family:'IBM Plex Mono', monospace;
+  font-size:.62rem; color:var(--sub); text-transform:uppercase; }
+.mes.passado { opacity:.45; }
+.mes.hoje { outline:2px solid var(--terra); outline-offset:-2px; }
+.it { width:34px; height:34px; position:relative; }
+.mes .it:only-of-type { width:40px; height:40px; }
+.it.plano { border-radius:.45rem; box-shadow: inset 0 0 0 1.5px rgba(156,99,70,.55); }
+.it.perene { opacity:.8; }
+.tag { position:absolute; left:50%; transform:translateX(-50%); bottom:-3px; font-size:.5rem; font-weight:700;
+  letter-spacing:.04em; text-transform:uppercase; padding:0 3px; border-radius:3px; white-space:nowrap; }
+.tag.plantio { background:var(--verde); color:#fff; }
+.tag.colheita { background:var(--ocre); color:var(--pet); }
+.leg { display:flex; flex-wrap:wrap; gap:.4rem 1.1rem; margin-top:.7rem; font-size:.8rem; color:var(--sub); align-items:center; }
+.leg span { display:inline-flex; align-items:center; gap:.35rem; }
+.sw { display:inline-block; width:14px; height:14px; border-radius:3px; }
+.vazio { color:var(--sub); font-size:.9rem; }
+""",
+    """
+export default function(component) {
+  const { data, parentElement } = component;
+  const root = rootOf(parentElement);
+  const rows = (data.rows || []).map((r) => `<div class="linha"><div class="ano">${esc(r.ano)}</div>${r.meses.map((m) => {
+    const items = m.itens.map((it) => `<span class="it ${esc(it.origem)}" title="${esc(it.nome)}: ${esc(it.estado_txt)}">
+      <span class="ico">${it.icon}</span>${it.estado === 'plantio' || it.estado === 'colheita' ? `<span class="tag ${it.estado}">${it.estado}</span>` : ''}</span>`).join('');
+    return `<div class="mes ${m.passado ? 'passado' : ''} ${m.hoje ? 'hoje' : ''}">${items}<span class="m">${esc(m.m)}</span></div>`;
+  }).join('')}</div>`).join('');
+  root.innerHTML = `<div class="cal"><p class="rot">${esc(data.eyebrow)}</p><h3>${esc(data.title)}</h3>
+    <p class="sub">${esc(data.sub)}</p>
+    ${rows ? `<div class="grade">${rows}</div>` : `<p class="vazio">${esc(data.empty)}</p>`}
+    <div class="leg"><span><span class="sw" style="background:var(--verde)"></span>plantio</span>
+      <span><span class="sw" style="background:var(--ocre)"></span>colheita</span>
+      <span><span class="sw" style="box-shadow:inset 0 0 0 1.5px rgba(156,99,70,.55)"></span>cultura do plano</span>
+      <span><span class="sw" style="outline:2px solid var(--terra); outline-offset:-2px"></span>este mês</span>
+      <span><span class="sw" style="background:var(--creme); opacity:.45"></span>já passou</span></div></div>`;
+}
+""",
+)
+
+
+def talhao_calendar(data: dict[str, Any], key: str) -> None:
+    _TCAL(data=data, key=key)

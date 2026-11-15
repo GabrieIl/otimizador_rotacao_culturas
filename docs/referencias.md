@@ -122,7 +122,8 @@ water requirements*. FAO Irrigation and Drainage Paper 56. Roma: FAO, 1998.
 | Onde | O quê |
 |---|---|
 | `analytics/agua.py` | Ra pela latitude e dia do ano (eq. 21), ET0 de Hargreaves (eq. 52), TAW = CAD x Zr (eq. 82), RAW = p x TAW (eq. 83), Ks e balanço de um reservatório (cap. 8). Teste: Ra do exemplo 8 (20° S, 3/set = 32,2 MJ m⁻² dia⁻¹). |
-| `config/agua.yaml` | Kc (tabela 12), Zr e p (tabela 22), fases (tabela 11) de milho, caupi e sorgo; "pastagem extensiva" para o buffel. `# CONFERIR` |
+| `config/agua.yaml` | Kc (tabela 12), Zr e p (tabela 22), fases (tabela 11): milho, caupi, sorgo, feijão ("Beans, dry"), mandioca ("Cassava, year 1"), batata-doce, cenoura, alface, cebolinha ("Onions, green"), espinafre, rabanete, tomate, pimentão ("Peppers, sweet"), morango, banana ("Banana, 1st year") e limão ("Citrus"). Análogos: rúcula (alface), coentro ("Small vegetables"), pimenta (pimentão), fava (feijão). Maracujá e mamão: sem valor na FAO-56. ❌ Valores de memória. `# CONFERIR` |
+| `analytics/agua.py` (`irrigation_plan`) | Turno de rega = RAW / ETc no pico (cap. 8) e Kc diário pelas 4 fases (cap. 6, fig. 25). |
 
 HARGREAVES, G. H.; SAMANI, Z. A. Reference crop evapotranspiration from temperature. *Applied Engineering
 in Agriculture*, v. 1, n. 2, p. 96-99, 1985. ❌ Citação de memória (a FAO-56 reproduz a equação).
@@ -419,6 +420,8 @@ por cálculo.
 | `ingestion/embrapa_zarc.py` | Janelas "ZARC" geradas (não são o ZARC). |
 | `config/chuva.yaml` | Limiares de Sivakumar aplicados ao semiárido brasileiro sem calibração local (`# CONFERIR`). |
 | `config/colheita.yaml` | Régua da quebra de safra: colher menos da metade do normal (REVISAR AGRÔNOMO). |
+| `config/aptidao.yaml` | pH ótimo e absoluto das 19 culturas novas (FAO Ecocrop, de memória) e exigências de N, P, K e água (qualitativas). |
+| `config/culturas.yaml` | Chuva do ciclo e sensibilidade à seca do feijão, fava, mandioca e batata-doce (escala do motor ancorada no Ky da FAO-33, de memória). |
 | `config/agua.yaml` | Parâmetros do buffel e da palma, NDVI de vegetação seca (0,30), limite de 40 °C na floração. |
 | `config/lentes.yaml` | Textos do risco de enxurrada por classe de relevo (REVISAR AGRÔNOMO). |
 | `domain/presets.py` | Preços e custos usados na **Renda** (não são cotação). |

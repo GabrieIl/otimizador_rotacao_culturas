@@ -150,6 +150,10 @@ def test_rules_ask_location_and_help(fake_tools) -> None:
 @pytest.mark.parametrize(("texto", "intencao", "cultura", "prioridade"), [
     ("Posso plantar mio agora?", "plantio", "milho_sertanejo", "equilibrio"),
     ("já dá pra semear feijão de corda?", "plantio", "feijao_caupi", "equilibrio"),
+    ("posso plantar feijão comum?", "plantio", "feijao_comum", "equilibrio"),
+    ("como está cenoura agora?", "plantio", "cenoura", "equilibrio"),
+    ("e pimentão?", "plantio", "pimentao", "equilibrio"),
+    ("como está o solo da roça?", "solo", None, "equilibrio"),
     ("qual roça aguenta mais pra criação", "placar", None, "forragem"),
     ("que rotação dá mais comida pra família", "placar", None, "graos"),
     ("qual plano dá mais dinheiro?", "placar", None, "renda"),
@@ -158,6 +162,51 @@ def test_rules_ask_location_and_help(fake_tools) -> None:
 def test_rules_understand(texto, intencao, cultura, prioridade) -> None:
     pedido = regras.entender(texto)
     assert (pedido.intencao, pedido.cultura, pedido.prioridade) == (intencao, cultura, prioridade)
+
+
+def test_context_and_sessao_preserve_app_filters() -> None:
+    sessao = Sessao(
+        id="s",
+        local=LocalConversa("quixada_ce"),
+        soil_group="arenosa",
+        cycle_code="21",
+        cultura_selecionada="tomate",
+        horizonte_anos=3,
+        prioridade="renda",
+        precisa_ter=["milho_sertanejo"],
+        nao_pode_ter=["palma_forrageira"],
+        culturas_atuais=["feijao_caupi"],
+        fazenda_resumo={"area_total_ha": 12.0, "talhoes": []},
+    )
+    again = Sessao.from_dict(sessao.to_dict())
+    assert again.horizonte_anos == 3 and again.prioridade == "renda" and again.cycle_code == "21"
+    seen_args: list[tuple[str, dict]] = []
+
+    def _rec(name, args, ctx):
+        seen_args.append((name, dict(args)))
+        return {"ok": True} if name != "placar_rotacoes" else {"ranking": [], "dados_de_exemplo": True}
+
+    old = contexto.executar
+    contexto.executar = _rec  # type: ignore[assignment]
+    try:
+        ctx = Agente.responder.__globals__["Contexto"](
+            local=sessao.local,
+            soil_group="arenosa",
+            cycle_code="21",
+            cultura_selecionada="tomate",
+            horizonte_anos=3,
+            prioridade="renda",
+            precisa_ter=("milho_sertanejo",),
+            nao_pode_ter=("palma_forrageira",),
+            culturas_atuais=("feijao_caupi",),
+            fazenda_resumo={"area_total_ha": 12.0, "talhoes": []},
+        )
+        res = contexto.dados_do_local(ctx)
+        msg = contexto.mensagem(ctx, res)
+    finally:
+        contexto.executar = old
+    assert ("placar_rotacoes", {"horizonte_anos": 3, "prioridade": "renda"}) in seen_args
+    assert "3 anos, renda" in msg and "filtros_ativos" in msg
 
 
 def test_guardas() -> None:

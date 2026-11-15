@@ -20,8 +20,10 @@ logger = logging.getLogger(__name__)
 
 # palavras que a transcrição tende a errar (ajudam o modelo de transcrição; não mudam o sentido)
 VOCABULARIO = (
-    "Conversa sobre roça no sertão: plantar milho, feijão-caupi, feijão de corda, macassar, sorgo, palma "
-    "forrageira, capim-buffel, veranico, rebanho, bode. Quixadá, Petrolina, Sousa, Irecê."
+    "Conversa sobre roça no sertão: plantar milho, feijão-caupi, feijão de corda, macassar, feijão comum, fava, "
+    "sorgo, mandioca, batata-doce, palma forrageira, capim-buffel, cenoura, alface, rúcula, coentro, cebolinha, "
+    "espinafre, rabanete, tomate, pimentão, pimenta, morango, maracujá, mamão, banana, limão, veranico, rebanho, "
+    "bode, ZARC, rega, talhão. Quixadá, Petrolina, Sousa, Irecê."
 )
 
 

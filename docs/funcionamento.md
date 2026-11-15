@@ -237,6 +237,9 @@ seções 1.4 a 1.8). Detalhes em [features/03-perfil-do-local.md](features/03-pe
   a chuva do ano x média (seta verde/vermelha) e o calendário de chuva, o solo do lugar comparado com a região,
   o solo por cultura (cards + destaque) e o terreno. Detalhes em
   [features/06-paginas-interativas.md](features/06-paginas-interativas.md).
+- **Calendário de chuva (Início e Plantio):** 3 meses por vez, com setas dos lados. A cor do dia é a chance de
+  chover (5 faixas, de 0-1 a 8-10 de cada 10 anos) e o ícone mostra se choveu e quanto (fraca, moderada,
+  forte). Detalhes em [features/08-calendario-de-chuva.md](features/08-calendario-de-chuva.md).
 - **Plantio ("O que devo plantar agora?"):** seletor de cultura com a janela oficial do ZARC, o aviso da cultura
   (Pode plantar / Arriscado / Não plante / Espere) e o risco por atraso. Depois o porquê (calendário da safra,
   início da chuva e veranicos), o ranking das rotações (1 a 10 anos, conforme a prioridade, com "Detalhar") e a
@@ -271,6 +274,29 @@ seções 1.4 a 1.8). Detalhes em [features/03-perfil-do-local.md](features/03-pe
   modelo.
 - Detalhes em [features/07-agua-e-insights.md](features/07-agua-e-insights.md).
 
+### Culturas do agricultor familiar (Feature 9)
+
+- **24 culturas em 6 grupos:** grãos, forrageiras, raízes, hortaliças de folha, hortaliças de alto valor e
+  frutas.
+- **Manejo de cada cultura** (`config/culturas.yaml`):
+  - **sequeiro:** o aviso usa ZARC, chuva e risco de quebra;
+  - **com rega:** o aviso mostra o plano de rega neste solo (intervalo máximo entre regas, litros por m² e água
+    do ciclo).
+- **Para adicionar uma cultura,** ela precisa estar em todos os pontos da tabela de
+  [features/09-novas-culturas.md](features/09-novas-culturas.md). O teste `tests/test_culturas_conectadas.py`
+  aponta o que faltar.
+
+### Talhões e o plano de rotação (Feature 10)
+
+- **Início:** o produtor informa a área da fazenda e os talhões (área, cultura de hoje e data do plantio).
+  Fica em `data/fazenda/`, só neste computador.
+- **Ranking:** gerado de todas as combinações de 1 a 3 culturas de sequeiro que cumprem "precisa ter" e
+  "não pode ter". Mostra as 5 melhores, mais "como planta hoje" para comparar.
+- **"O plano da fazenda":** quadro com os talhões em proporção à área. O clique abre o calendário do talhão,
+  com ícones do plantio à colheita e as próximas culturas. Tem os modos "rotação do ranking" e "como planta
+  hoje", e o plano sai em CSV.
+- Detalhes em [features/10-talhoes.md](features/10-talhoes.md).
+
 ---
 
 ## 8. Como mexer
@@ -290,6 +316,9 @@ seções 1.4 a 1.8). Detalhes em [features/03-perfil-do-local.md](features/03-pe
 | Mudar a régua da quebra de safra | `config/colheita.yaml` (vale para o aviso e o ranking) |
 | Ajustar Kc, raiz (Zr) e p das culturas | `config/agua.yaml` (`# CONFERIR`) |
 | Forçar nova leitura de um valor de lente | apague o PNG em `data/bronze/gibs_pixels/<camada>/` |
+| Apagar os talhões de um local | botão "Apagar os talhões" na Início, ou o JSON em `data/fazenda/` |
+| Mudar o ciclo (plantio à colheita) de uma cultura no plano | `ciclo_dias` em `config/culturas.yaml` (senão vale a soma das fases em `config/agua.yaml`) |
+| Adicionar uma cultura | registro em `config/culturas.yaml` + `config/aptidao.yaml` + `config/agua.yaml` + ícone em `app/icons.py` (+ `CropSpec` em `domain/presets.py` se for de sequeiro); rode `pytest tests/test_culturas_conectadas.py` |
 
 Comandos:
 

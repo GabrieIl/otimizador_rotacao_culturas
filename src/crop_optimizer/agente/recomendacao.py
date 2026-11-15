@@ -22,10 +22,11 @@ from datetime import date
 
 from crop_optimizer.analytics.rain_delay import fmt_date
 from crop_optimizer.config import load_yaml_config
+from crop_optimizer.domain.crop_registry import crop_info, is_irrigated
 from crop_optimizer.domain.presets import crop_map
 
 FINALIDADES = ("graos", "forragem")
-_GROUP = {"verde": 0, "amarelo": 1, "espera": 2, "vermelho": 3}
+_GROUP = {"verde": 0, "amarelo": 1, "espera": 2, "vermelho": 3, "rega": 4}
 
 CRITERIO = (
     "aviso de hoje (pode plantar, depois arriscado, depois esperar); janela oficial aberta ou que abre primeiro; "
@@ -34,13 +35,17 @@ CRITERIO = (
 
 
 def serve_para(crop_id: str) -> list[str]:
-    """Para que a cultura serve no motor: grãos (comida) e/ou forragem (rebanho)."""
-    crop = crop_map()[crop_id]
+    """Para que a cultura serve no motor: grãos (comida), forragem (rebanho) ou rega (irrigada)."""
+    if is_irrigated(crop_id):
+        return ["rega"]
+    crop = crop_map().get(crop_id)
+    info = crop_info(crop_id)
     min_forage = float(load_yaml_config("conversa")["recomendacao"]["forragem_minima_t_ha"])
     out = []
-    if crop.food_fraction > 0 and crop.base_yield_ton_ha > 0:
+    has_food_spec = crop is not None and crop.food_fraction > 0 and crop.base_yield_ton_ha > 0
+    if has_food_spec or info.get("grupo") in ("graos", "raizes"):
         out.append("graos")
-    if crop.forage_yield_ton_ha >= min_forage:
+    if crop is not None and crop.forage_yield_ton_ha >= min_forage:
         out.append("forragem")
     return out
 

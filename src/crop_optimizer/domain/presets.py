@@ -63,6 +63,12 @@ DEFAULT_LOCATIONS: list[LocationSpec] = [
     ),
 ]
 
+def _crop_registry() -> dict:
+    from crop_optimizer.config import load_yaml_config
+
+    return load_yaml_config("culturas")["culturas"]
+
+
 DEFAULT_CROPS: list[CropSpec] = [
     CropSpec(
         crop_id="milho_sertanejo",
@@ -159,6 +165,34 @@ DEFAULT_CROPS: list[CropSpec] = [
         forage_yield_ton_ha=5.60,
         forage_drought_resilience=0.92,
     ),
+    # --- culturas de sequeiro adicionadas (Feature 9) -----------------------------------------
+    # O motor usa estas só no aviso por cultura (colheita RELATIVA ao normal), que não depende de
+    # produtividade, preço ou custo. Esses campos ficam zerados de propósito: não há fonte para eles
+    # e as culturas novas não entram em nenhuma rotação. A sensibilidade à seca e a chuva do ciclo
+    # vêm de config/culturas.yaml.
+    *[
+        CropSpec(
+            crop_id=crop_id,
+            name=name,
+            slot=slot,
+            cycle_days=cycle,
+            base_yield_ton_ha=0.0,
+            base_price_brl_ton=0.0,
+            price_volatility=0.0,
+            direct_cost_brl_ha=0.0,
+            nitrogen_demand_kg_ha=0.0,
+            drought_sensitivity=_crop_registry()[crop_id]["sensibilidade_seca"],
+            food_fraction=1.0,
+            forage_yield_ton_ha=0.0,
+            forage_drought_resilience=0.5,
+        )
+        for crop_id, name, slot, cycle in (
+            ("feijao_comum", "Feijão", SeasonSlot.SAFRA, 90),
+            ("fava", "Fava", SeasonSlot.SAFRA, 120),
+            ("mandioca", "Mandioca", SeasonSlot.SAFRA, 300),
+            ("batata_doce", "Batata-doce", SeasonSlot.SAFRA, 150),
+        )
+    ],
 ]
 
 DEFAULT_STRATEGIES: list[RotationStrategy] = [

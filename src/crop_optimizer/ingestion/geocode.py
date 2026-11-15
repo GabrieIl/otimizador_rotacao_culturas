@@ -9,6 +9,7 @@ Respostas guardadas sem alteração em data/bronze/nominatim/ e data/bronze/ibge
 
 from __future__ import annotations
 
+import hashlib
 import json
 import unicodedata
 from dataclasses import dataclass
@@ -28,6 +29,27 @@ class Place:
     municipio: str
     uf: str
     ibge_code: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class PlaceCandidate:
+    municipio: str
+    uf: str
+    ibge_code: str | None
+    lat: float
+    lon: float
+    display_name: str = ""
+
+    @property
+    def label(self) -> str:
+        return f"{self.municipio}/{self.uf}" if self.uf else self.municipio
+
+
+BRAZIL_UFS: tuple[str, ...] = (
+    "AC", "AL", "AM", "AP", "BA", "CE", "DF", "ES", "GO",
+    "MA", "MG", "MS", "MT", "PA", "PB", "PE", "PI", "PR",
+    "RJ", "RN", "RO", "RR", "RS", "SC", "SE", "SP", "TO",
+)
 
 
 def inside_brazil_box(lat: float, lon: float) -> bool:
@@ -83,17 +105,24 @@ def place_from_address(address: dict, municipalities: list[dict] | None) -> Plac
     """Separado da rede para poder testar: endereço do Nominatim + lista do IBGE -> Place."""
     if address.get("country_code") not in (None, "br"):
         raise GeocodeUnavailable("O ponto não fica no Brasil.")
-    name = address.get("city") or address.get("municipality") or address.get("town") or address.get("village")
+    candidates = [
+        str(address[k]).strip()
+        for k in ("city", "municipality", "town", "village", "county")
+        if address.get(k)
+    ]
     iso = address.get("ISO3166-2-lvl4", "")
-    if not name or not iso.startswith("BR-"):
+    if not candidates or not iso.startswith("BR-"):
         raise GeocodeUnavailable("Não achamos um município nesse ponto (está no mar ou em área sem cadastro?).")
+    name = candidates[0]
     uf = iso[3:]
     code = None
     if municipalities:
-        wanted = _normalize(name)
-        for mun in municipalities:
-            if _normalize(mun["nome"]) == wanted:
+        by_norm = {_normalize(mun["nome"]): mun for mun in municipalities}
+        for candidate in candidates:
+            mun = by_norm.get(_normalize(candidate))
+            if mun is not None:
                 code = str(mun["id"])
+                name = str(mun["nome"]) if candidate != name else name
                 break
     return Place(municipio=name, uf=uf, ibge_code=code)
 
@@ -109,3 +138,90 @@ def resolve_place(lat: float, lon: float, settings: Settings | None = None) -> P
     uf = address.get("ISO3166-2-lvl4", "BR-")[3:]
     municipalities = _municipalities(uf, settings) if uf else None
     return place_from_address(address, municipalities)
+
+
+def _search_nominatim(query: str, uf: str | None, settings: Settings) -> list[dict]:
+    cfg = load_yaml_config("localizacao")["nominatim"]
+    search_url = cfg.get("search_url", "https://nominatim.openstreetmap.org/search")
+    cleaned = query.strip()
+    full_query = f"{cleaned}, {uf}, Brasil" if uf else f"{cleaned}, Brasil"
+    key = hashlib.sha1(full_query.lower().encode("utf-8")).hexdigest()[:16]
+    cache = settings.paths.bronze_source("nominatim") / f"search_{key}.json"
+    return _get_json(
+        search_url,
+        {
+            "format": "jsonv2",
+            "q": full_query,
+            "countrycodes": "br",
+            "addressdetails": 1,
+            "limit": 6,
+            "accept-language": "pt-BR",
+        },
+        cache,
+        float(cfg["timeout_segundos"]),
+        headers={"User-Agent": cfg["user_agent"]},
+    )
+
+
+def candidates_from_hits(
+    hits: list[dict],
+    municipalities_by_uf: dict[str, list[dict] | None] | None = None,
+) -> list[PlaceCandidate]:
+    """Converte resultados do Nominatim Search em `PlaceCandidate` únicos no Brasil."""
+    found: list[PlaceCandidate] = []
+    seen: set[tuple[str, str]] = set()
+    by_uf = municipalities_by_uf or {}
+    for hit in hits:
+        try:
+            lat = float(hit["lat"])
+            lon = float(hit["lon"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if not inside_brazil_box(lat, lon):
+            continue
+        address = hit.get("address", {})
+        uf = str(address.get("ISO3166-2-lvl4", "BR-"))[3:]
+        try:
+            place = place_from_address(address, by_uf.get(uf))
+        except GeocodeUnavailable:
+            continue
+        dedup_key = (_normalize(place.municipio), place.uf)
+        if dedup_key in seen:
+            continue
+        seen.add(dedup_key)
+        found.append(
+            PlaceCandidate(
+                municipio=place.municipio,
+                uf=place.uf,
+                ibge_code=place.ibge_code,
+                lat=round(lat, 5),
+                lon=round(lon, 5),
+                display_name=str(hit.get("display_name", place.municipio)),
+            )
+        )
+    return found
+
+
+def search_places(
+    query: str,
+    uf: str | None = None,
+    settings: Settings | None = None,
+) -> list[PlaceCandidate]:
+    """Busca município, povoado ou CEP pelo nome e resolve coordenadas + código IBGE."""
+    cleaned = query.strip()
+    if not cleaned:
+        raise GeocodeUnavailable("Digite o nome do município, povoado ou CEP para buscar.")
+    settings = settings or get_settings()
+    uf_norm = uf.strip().upper() if uf and uf.strip() else None
+    hits = _search_nominatim(cleaned, uf_norm, settings)
+    if not isinstance(hits, list):
+        return []
+    muns_by_uf: dict[str, list[dict] | None] = {}
+    for hit in hits:
+        hit_uf = str(hit.get("address", {}).get("ISO3166-2-lvl4", "BR-"))[3:]
+        if hit_uf and hit_uf not in muns_by_uf:
+            try:
+                muns_by_uf[hit_uf] = _municipalities(hit_uf, settings)
+            except GeocodeUnavailable:
+                muns_by_uf[hit_uf] = None
+    return candidates_from_hits(hits, muns_by_uf)

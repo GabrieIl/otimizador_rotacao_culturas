@@ -11,6 +11,7 @@ import json
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 from crop_optimizer.agente.local import LocalConversa
 from crop_optimizer.config import Settings, get_settings, load_yaml_config
@@ -28,6 +29,15 @@ class Sessao:
     simular: date | None = None
     atualizada: str = ""
     apresentado: bool = False  # já recebeu a mensagem de boas-vindas (com o aviso de privacidade)
+    soil_group: str | None = None
+    cycle_code: str | None = None
+    cultura_selecionada: str | None = None
+    horizonte_anos: int = 5
+    prioridade: str = "equilibrio"
+    precisa_ter: list[str] = field(default_factory=list)
+    nao_pode_ter: list[str] = field(default_factory=list)
+    culturas_atuais: list[str] = field(default_factory=list)
+    fazenda_resumo: dict[str, Any] | None = None
 
     def lembrar(self, pergunta: str, resposta: str) -> None:
         limit = int(load_yaml_config("conversa")["sessao"]["max_mensagens_historico"])
@@ -42,6 +52,15 @@ class Sessao:
             "simular": self.simular.isoformat() if self.simular else None,
             "atualizada": self.atualizada,
             "apresentado": self.apresentado,
+            "soil_group": self.soil_group,
+            "cycle_code": self.cycle_code,
+            "cultura_selecionada": self.cultura_selecionada,
+            "horizonte_anos": self.horizonte_anos,
+            "prioridade": self.prioridade,
+            "precisa_ter": self.precisa_ter,
+            "nao_pode_ter": self.nao_pode_ter,
+            "culturas_atuais": self.culturas_atuais,
+            "fazenda_resumo": self.fazenda_resumo,
         }
 
     @classmethod
@@ -53,6 +72,15 @@ class Sessao:
             simular=date.fromisoformat(data["simular"]) if data.get("simular") else None,
             atualizada=data.get("atualizada", ""),
             apresentado=bool(data.get("apresentado", False)),
+            soil_group=data.get("soil_group"),
+            cycle_code=data.get("cycle_code"),
+            cultura_selecionada=data.get("cultura_selecionada"),
+            horizonte_anos=int(data.get("horizonte_anos", 5)),
+            prioridade=str(data.get("prioridade", "equilibrio")),
+            precisa_ter=list(data.get("precisa_ter", [])),
+            nao_pode_ter=list(data.get("nao_pode_ter", [])),
+            culturas_atuais=list(data.get("culturas_atuais", [])),
+            fazenda_resumo=data.get("fazenda_resumo"),
         )
 
 

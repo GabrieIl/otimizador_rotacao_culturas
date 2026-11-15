@@ -58,11 +58,12 @@ def test_tools_match_plantio_page(tmp_path, location_id: str, nome: str, as_of: 
     placar = executar("placar_rotacoes", {"horizonte_anos": horizon, "prioridade": priority,
                                           "data": as_of.isoformat()}, ctx)
 
-    # aviso por cultura: mesma cultura, mesmo nível (a página encurta "Não plante agora" para "Não plante")
+    # aviso por cultura: mesma cultura, mesmo nível (na UI, "rega" usa badge "neutro")
     tool = {c["id"]: c["aviso"] for c in sit["culturas"]}
     assert [c["id"] for c in page["culturas"]] == list(tool)
     for item in page["culturas"]:
-        assert tool[item["id"]]["nivel"] == item["tone"], item["id"]
+        tool_tone = "neutro" if tool[item["id"]]["nivel"] == "rega" else tool[item["id"]]["nivel"]
+        assert tool_tone == item["tone"], item["id"]
 
     # ranking: mesma ordem e mesmos números
     assert [r["id"] for r in placar["ranking"]] == [r["id"] for r in page["ranking"]]
@@ -139,3 +140,64 @@ def test_local_por_coordenada_uses_same_location_as_page(monkeypatch: pytest.Mon
     monkeypatch.setattr(local_mod, "resolve_place", _fail)
     unknown = local_por_coordenada(-5.2, -39.3)
     assert unknown.aviso == "rede fora" and "não identificado" in unknown.nome
+
+
+def test_placar_rotacoes_respects_filters_and_current_crops() -> None:
+    ctx = Contexto(
+        local=LocalConversa("quixada_ce"),
+        hoje=date(2026, 3, 1),
+        horizonte_anos=3,
+        prioridade="renda",
+        precisa_ter=("milho_sertanejo",),
+        nao_pode_ter=("palma_forrageira",),
+        culturas_atuais=("feijao_caupi",),
+    )
+    placar = executar("placar_rotacoes", {}, ctx)
+    assert placar["horizonte_anos"] == 3
+    assert placar["prioridade"] == "renda"
+    assert placar["filtros_aplicados"]["precisa_ter"] == ["Milho"]
+    assert placar["filtros_aplicados"]["nao_pode_ter"] == ["Palma forrageira"]
+    assert placar["filtros_aplicados"]["culturas_atuais"] == ["Feijão-caupi"]
+    assert placar["jeito_de_hoje"] == "como_planta_hoje"
+    assert len(placar["ranking"]) <= 6
+    assert any(r["id"] == "como_planta_hoje" for r in placar["ranking"])
+
+    conflict_ctx = Contexto(
+        local=LocalConversa("quixada_ce"),
+        hoje=date(2026, 3, 1),
+        precisa_ter=("milho_sertanejo",),
+        nao_pode_ter=("milho_sertanejo",),
+    )
+    conflict = executar("placar_rotacoes", {}, conflict_ctx)
+    assert "aviso_restricoes" in conflict and conflict["combinacoes_que_cumprem"] == 0
+
+
+def test_situacao_plantio_irrigated_and_zarc_filters() -> None:
+    ctx = Contexto(
+        local=LocalConversa("petrolina_pe"),
+        hoje=date(2026, 3, 1),
+        soil_group="arenosa",
+        cycle_code="21",
+        cultura_selecionada="tomate",
+    )
+    res = executar("situacao_plantio", {"cultura": "tomate"}, ctx)
+    c = res["culturas"][0]
+    assert c["manejo"] == "irrigado"
+    assert c["aviso"]["nivel"] == "rega"
+    assert c["aviso"]["palavra"] == "Só com rega"
+    assert c["aviso"]["usa_clima_de_exemplo"] is False
+    assert "quebra_de_safra_com_o_atraso_de_hoje" not in c
+    assert "rega" in c["agua"]
+    assert res["cultura_em_foco_no_app"] == "Tomate"
+    assert res["filtros_zarc"]["ciclo"] == "21"
+
+
+def test_solo_da_roca_includes_texture_and_fazenda() -> None:
+    ctx = Contexto(
+        local=LocalConversa("quixada_ce"),
+        hoje=date(2026, 3, 1),
+        fazenda_resumo={"area_total_ha": 10.0, "talhoes": [{"nome": "Talhão 1", "area_ha": 5.0}]},
+    )
+    solo = executar("solo_da_roca", {}, ctx)
+    assert solo["textura"]
+    assert solo["fazenda"]["area_total_ha"] == 10.0

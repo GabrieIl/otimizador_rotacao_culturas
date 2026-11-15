@@ -19,6 +19,9 @@ data/conversa/
 !data/bronze/.gitkeep
 !data/silver/.gitkeep
 !data/gold/.gitkeep
+# dados do produtor (análise de campo e talhões): só neste computador
+data/campo/
+data/fazenda/
 
 # OS / IDE
 .DS_Store

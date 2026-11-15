@@ -19,9 +19,13 @@ def _op(crop_id: str, nivel: str, palavra: str, quebra: float, janela: str | Non
 def test_serve_para() -> None:
     assert serve_para("milho_sertanejo") == ["graos"]
     assert serve_para("feijao_caupi") == ["graos"]
+    assert serve_para("feijao_comum") == ["graos"]
+    assert serve_para("mandioca") == ["graos"]
     assert serve_para("sorgo_forrageiro") == ["graos", "forragem"]
     assert serve_para("palma_forrageira") == ["forragem"]
     assert serve_para("capim_buffel") == ["forragem"]
+    assert serve_para("cenoura") == ["rega"]
+    assert serve_para("tomate") == ["rega"]
 
 
 def test_order_follows_the_criterion() -> None:

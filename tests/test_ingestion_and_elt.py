@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from crop_optimizer.config import get_settings
-from crop_optimizer.domain.presets import DEFAULT_LOCATIONS, location_map
+from crop_optimizer.domain.presets import DEFAULT_CROPS, DEFAULT_LOCATIONS, location_map
 from crop_optimizer.elt.pipeline import CropLakehouseEltPipeline
 from crop_optimizer.ingestion import NasaAppeearsClient, NasaPowerClient
 from crop_optimizer.lakehouse.catalog import LakehouseCatalog
@@ -22,7 +22,7 @@ def test_elt_builds_partitioned_star_schema_and_duckdb_queries(tmp_path: Path) -
     summary = pipeline.run(start_date=date(2020, 1, 1), end_date=date(2022, 12, 31))
 
     assert summary.locations_count == 4
-    assert summary.crops_count == 5
+    assert summary.crops_count == len(DEFAULT_CROPS)
     assert summary.climate_rows > 4000
 
     assert settings.paths.dim_location.exists()

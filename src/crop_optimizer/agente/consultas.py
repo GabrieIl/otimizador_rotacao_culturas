@@ -15,11 +15,14 @@ from functools import lru_cache
 import polars as pl
 
 from crop_optimizer.analytics import agua, build_planting_window_risk_matrix
-from crop_optimizer.analytics.crop_advice import CropVerdict, crop_verdict
+from crop_optimizer.analytics.crop_advice import CropVerdict, crop_verdict, irrigated_verdict
 from crop_optimizer.analytics.rain_delay import (
     CropWindowStatus,
     RainDelayReport,
+    ZarcStatusReport,
     build_rain_delay_report,
+    fetch_location_zarc,
+    seasonal_stats_from_rain_series,
 )
 from crop_optimizer.analytics.soil_suitability import (
     CropSuitability,
@@ -29,16 +32,20 @@ from crop_optimizer.analytics.soil_suitability import (
     texture_class,
 )
 from crop_optimizer.config import get_settings, load_yaml_config
+from crop_optimizer.domain.crop_registry import is_irrigated, is_perennial, ordered_ids
 from crop_optimizer.domain.models import (
     LocationSpec,
+    RotationStrategy,
     SimulationConfig,
     SoilHealthState,
     StrategySimulationResult,
 )
-from crop_optimizer.domain.presets import DEFAULT_STRATEGIES
+from crop_optimizer.domain.presets import crop_map
 from crop_optimizer.domain.soil_profile import SoilProfile, build_profile, load_field_data
 from crop_optimizer.elt.pipeline import CropLakehouseEltPipeline
 from crop_optimizer.engine import MonteCarloRotationEngine, compute_pareto_frontier
+from crop_optimizer.engine.candidates import candidate_strategies, current_strategy
+from crop_optimizer.engine.rain_onset import season_start_for
 from crop_optimizer.ingestion.power_temperature import (
     TemperatureUnavailable,
     fetch_temperature_series,
@@ -52,9 +59,18 @@ from crop_optimizer.lakehouse.catalog import LakehouseCatalog, SeasonalClimateSt
 DELAY_GRID = [0, 7, 14, 21, 28, 35]
 N_SCENARIOS = 10_000
 DEFAULT_VERANICO_DAYS = 7  # sem chuva firme no histórico, a página usa 7 dias
-CROP_IDS = list(load_yaml_config("aptidao")["culturas"])  # as mesmas culturas da página
+
+
+def _crop_names() -> dict[str, str]:
+    return {k: str(v["nome"]) for k, v in load_yaml_config("aptidao")["culturas"].items()}
+
+
+CROP_IDS = [c for c in ordered_ids() if c in _crop_names()] + [c for c in _crop_names() if c not in ordered_ids()]
 DEFAULT_RISK_PCT = 50.0  # cultura sem linha na matriz: a página assume 50%
 HORIZONS = [1, 2, 3, 5, 10]  # anos à frente do ranking das rotações
+TOP_ROTATIONS = 5  # rotações mostradas no ranking (mais a de hoje)
+
+RainOverride = tuple[str, float, float, float, float]
 
 _catalog_lock = threading.Lock()  # DuckDB: uma consulta por vez (a API atende em threads)
 
@@ -71,13 +87,22 @@ def _catalog() -> LakehouseCatalog:
 # --- chuva e solo (dado real) -------------------------------------------------
 
 @lru_cache(maxsize=64)
-def _rain_report_cached(location_json: str, as_of: date) -> RainDelayReport:
-    return build_rain_delay_report(LocationSpec.model_validate_json(location_json), as_of)
+def _rain_report_cached(
+    location_json: str, as_of: date, soil_group: str | None = None, cycle_code: str | None = None
+) -> RainDelayReport:
+    return build_rain_delay_report(
+        LocationSpec.model_validate_json(location_json),
+        as_of,
+        soil_group=soil_group,
+        cycle_code=cycle_code,
+    )
 
 
-def rain_report(location: LocationSpec, as_of: date) -> RainDelayReport:
+def rain_report(
+    location: LocationSpec, as_of: date, soil_group: str | None = None, cycle_code: str | None = None
+) -> RainDelayReport:
     """Atraso da chuva + janelas ZARC. Levanta RainDataUnavailable se não houver chuva real."""
-    return _rain_report_cached(location.model_dump_json(), as_of)
+    return _rain_report_cached(location.model_dump_json(), as_of, soil_group, cycle_code)
 
 
 @lru_cache(maxsize=64)
@@ -122,9 +147,43 @@ class VeranicoArgs:
         return cls(None, (), DEFAULT_VERANICO_DAYS)
 
 
-def _climate_stats(exemplo_id: str, veranico: VeranicoArgs) -> SeasonalClimateStats:
+def _rain_override(location: LocationSpec, exemplo_id: str, veranico: VeranicoArgs) -> RainOverride | None:
+    """Calibração NASA POWER do ponto para o motor (igual a app/dashboard.py)."""
+    try:
+        series = fetch_rain_series(location, today=date.today())
+    except RainDataUnavailable:
+        return None
+    with _catalog_lock:
+        base_stats = _catalog().get_seasonal_climate_stats(exemplo_id)
+    pt_stats = seasonal_stats_from_rain_series(
+        series, base_stats, veranico_prob=veranico.probability, veranico_lengths=veranico.lengths
+    )
+    if pt_stats.location_id != series.location_id:
+        return None
+    return (
+        pt_stats.location_id,
+        pt_stats.safra_rain_mean_mm,
+        pt_stats.safra_rain_std_mm,
+        pt_stats.safrinha_rain_mean_mm,
+        pt_stats.safrinha_rain_std_mm,
+    )
+
+
+def _climate_stats(
+    exemplo_id: str, veranico: VeranicoArgs, rain_override: RainOverride | None = None
+) -> SeasonalClimateStats:
     with _catalog_lock:
         stats = _catalog().get_seasonal_climate_stats(exemplo_id)
+    if rain_override is not None:
+        pt_id, safra_mean, safra_std, safrinha_mean, safrinha_std = rain_override
+        stats = replace(
+            stats,
+            location_id=pt_id,
+            safra_rain_mean_mm=safra_mean,
+            safra_rain_std_mm=safra_std,
+            safrinha_rain_mean_mm=safrinha_mean,
+            safrinha_rain_std_mm=safrinha_std,
+        )
     if veranico.probability is None:
         return stats
     return replace(stats, veranico_prob=veranico.probability, veranico_lengths=veranico.lengths)
@@ -144,10 +203,16 @@ def _soil_config(exemplo_id: str, soil: SoilInputs) -> SimulationConfig:
 
 
 @lru_cache(maxsize=32)
-def risk_matrix(exemplo_id: str, safra_delay_days: int, veranico: VeranicoArgs, soil: SoilInputs) -> pl.DataFrame:
+def risk_matrix(
+    exemplo_id: str,
+    safra_delay_days: int,
+    veranico: VeranicoArgs,
+    soil: SoilInputs,
+    rain_override: RainOverride | None = None,
+) -> pl.DataFrame:
     """Matriz atraso x cultura do aviso: o mesmo motor e a mesma régua de quebra do ranking."""
     return build_planting_window_risk_matrix(
-        _climate_stats(exemplo_id, veranico),
+        _climate_stats(exemplo_id, veranico, rain_override),
         delay_days_grid=sorted({*DELAY_GRID, safra_delay_days}),
         n_samples=N_SCENARIOS,
         config=_soil_config(exemplo_id, soil),
@@ -176,20 +241,62 @@ class SoilInputs:
         )
 
 
-@lru_cache(maxsize=32)
-def simulate_rotations(
-    exemplo_id: str, horizon_years: int, safra_delay_days: int, veranico: VeranicoArgs, soil: SoilInputs
-) -> list[StrategySimulationResult]:
-    """10.000 cenários das rotações, com os mesmos parâmetros da página Plantio."""
-    climate_stats = _climate_stats(exemplo_id, veranico)
+@lru_cache(maxsize=512)
+def _simulate_one(
+    strategy_key: tuple[str, str, str, tuple[str, ...]],
+    config_json: str,
+    exemplo_id: str,
+    veranico: VeranicoArgs,
+    rain_override: RainOverride | None = None,
+) -> StrategySimulationResult:
+    """Uma rotação em cache; trocar restrições reutiliza as combinações já simuladas."""
+    strategy_id, name, description, crops_seq = strategy_key
+    strategy = RotationStrategy(
+        strategy_id=strategy_id,
+        name=name,
+        short_name=name,
+        description=description,
+        annual_sequence=list(crops_seq),
+    )
+    config = SimulationConfig.model_validate_json(config_json)
     with _catalog_lock:
-        crops = {c.crop_id: c for c in _catalog().load_crops()}
-    config = _soil_config(exemplo_id, soil).model_copy(
+        lake_crops = {c.crop_id: c for c in _catalog().load_crops()}
+    crops = {**crop_map(), **lake_crops}
+    return MonteCarloRotationEngine(crops_catalog=crops).simulate_strategy(
+        strategy, _climate_stats(exemplo_id, veranico, rain_override), config
+    )
+
+
+@lru_cache(maxsize=64)
+def simulate_rotations(
+    exemplo_id: str,
+    horizon_years: int,
+    safra_delay_days: int,
+    veranico: VeranicoArgs,
+    soil: SoilInputs,
+    rain_override: RainOverride | None = None,
+    required: tuple[str, ...] = (),
+    excluded: tuple[str, ...] = (),
+    current_crops: tuple[str, ...] = (),
+) -> list[StrategySimulationResult]:
+    """10.000 cenários das rotações candidatas + jeito de hoje, com os mesmos parâmetros da página Plantio."""
+    current = current_strategy(list(current_crops))
+    candidates = candidate_strategies(list(required), list(excluded))
+    same_as_current = {tuple(sorted(current.annual_sequence))}
+    candidates = [c for c in candidates if tuple(sorted(c.annual_sequence)) not in same_as_current]
+    config_json = _soil_config(exemplo_id, soil).model_copy(
         update={"horizon_years": horizon_years, "safra_delay_days": safra_delay_days}
-    )
-    results = MonteCarloRotationEngine(crops_catalog=crops).simulate_portfolio(
-        DEFAULT_STRATEGIES, climate_stats, config
-    )
+    ).model_dump_json()
+    results = [
+        _simulate_one(
+            (strat.strategy_id, strat.short_name or strat.name, strat.description, tuple(strat.annual_sequence)),
+            config_json,
+            exemplo_id,
+            veranico,
+            rain_override,
+        )
+        for strat in [current, *candidates]
+    ]
     compute_pareto_frontier(results, criterion="two_year_loss")
     return results
 
@@ -204,6 +311,7 @@ class Panorama:
     exemplo_id: str
     as_of: date
     report: RainDelayReport | None
+    zarc: ZarcStatusReport
     rain_error: str | None
     profile: SoilProfile
     suitability: list[CropSuitability]
@@ -211,6 +319,9 @@ class Panorama:
     veranico: VeranicoArgs
     soil: SoilInputs
     matrix: pl.DataFrame
+    soil_group: str
+    cycle_code: str | None
+    rain_override: RainOverride | None
 
     def risk_pct(self, crop_id: str) -> float:
         pct = crop_failure_pct(self.matrix, crop_id, self.safra_delay_days)
@@ -218,24 +329,48 @@ class Panorama:
 
     def window(self, crop_id: str) -> CropWindowStatus | None:
         """Janela do ZARC; cultura do ZARC sem janela no município vira "sem indicação" (como na página)."""
-        if self.report is None:
-            return None
-        window = next((cw for cw in self.report.crop_windows if cw.crop_id == crop_id), None)
+        window = next((cw for cw in self.zarc.crop_windows if cw.crop_id == crop_id), None)
         zarc_crops = set(load_yaml_config("zarc")["culturas"])
-        if crop_id in zarc_crops and window is None and self.report.zarc_error is None:
+        if crop_id in zarc_crops and window is None and self.zarc.zarc_error is None:
             window = CropWindowStatus(crop_id, None, "sem_indicacao")
         return window
 
-    def verdict(self, crop_id: str) -> CropVerdict:
+    def verdict(
+        self,
+        crop_id: str,
+        water: dict[str, tuple[agua.HoldDays, agua.SoilWaterToday | None, agua.IrrigationPlan | None]] | None = None,
+    ) -> CropVerdict:
         """O aviso do Acauã para a cultura (o mesmo da página Plantio)."""
+        if is_irrigated(crop_id):
+            resolved_water = water if water is not None else self.water()
+            plan = resolved_water[crop_id][2] if resolved_water is not None and crop_id in resolved_water else None
+            return irrigated_verdict(crop_id, _crop_names().get(crop_id, crop_id), plan)
         status = self.report.status if self.report is not None else None
         return crop_verdict(crop_id, self.risk_pct(crop_id), status, self.window(crop_id), self.safra_delay_days)
 
-    def rotations(self, horizon_years: int) -> list[StrategySimulationResult]:
-        return simulate_rotations(self.exemplo_id, horizon_years, self.safra_delay_days, self.veranico, self.soil)
+    def rotations(
+        self,
+        horizon_years: int,
+        required: tuple[str, ...] = (),
+        excluded: tuple[str, ...] = (),
+        current_crops: tuple[str, ...] = (),
+    ) -> list[StrategySimulationResult]:
+        return simulate_rotations(
+            self.exemplo_id,
+            horizon_years,
+            self.safra_delay_days,
+            self.veranico,
+            self.soil,
+            self.rain_override,
+            required,
+            excluded,
+            current_crops,
+        )
 
-    def water(self) -> dict[str, tuple[agua.HoldDays, agua.SoilWaterToday | None]] | None:
-        """Água da roça por cultura (dias que aguenta sem chuva e água no solo hoje), como na página.
+    def water(
+        self,
+    ) -> dict[str, tuple[agua.HoldDays, agua.SoilWaterToday | None, agua.IrrigationPlan | None]] | None:
+        """Água da roça por cultura (dias que aguenta, água no solo hoje e plano de rega), como na página.
 
         None se a chuva ou a temperatura do NASA POWER não estiverem disponíveis.
         """
@@ -245,29 +380,57 @@ class Panorama:
             return None
 
 
-def panorama(location: LocationSpec, exemplo_id: str, as_of: date) -> Panorama:
+def panorama(
+    location: LocationSpec,
+    exemplo_id: str,
+    as_of: date,
+    *,
+    soil_group: str | None = None,
+    cycle_code: str | None = None,
+) -> Panorama:
     profile = soil_profile(location)
+    eff_soil_group = soil_group or texture_class(profile.get("areia_pct"), profile.get("argila_pct"))
     suitability = evaluate(profile)
     try:
-        report = rain_report(location, as_of)
+        report = rain_report(location, as_of, soil_group=eff_soil_group, cycle_code=cycle_code)
     except RainDataUnavailable as exc:
         report, rain_error, delay = None, str(exc), 0
+        zarc = fetch_location_zarc(
+            location,
+            season_start_for(as_of, 1),
+            as_of,
+            soil_group=eff_soil_group,
+            cycle_code=cycle_code,
+        )
     else:
         rain_error, delay = None, report.motor_delay_days
+        zarc = ZarcStatusReport(
+            crop_windows=report.crop_windows,
+            zarc_safra=report.zarc_safra,
+            zarc_error=report.zarc_error,
+            decendios_by_crop=report.decendios_by_crop,
+            soil_group=report.soil_group,
+            cycle_code=report.cycle_code,
+        )
     veranico = VeranicoArgs.from_report(report)
     soil = SoilInputs.from_profile(profile, suitability)
+    rain_override = _rain_override(location, exemplo_id, veranico)
     return Panorama(
         location=location,
         exemplo_id=exemplo_id,
         as_of=as_of,
         report=report,
+        zarc=zarc,
         rain_error=rain_error,
         profile=profile,
         suitability=suitability,
         safra_delay_days=delay,
         veranico=veranico,
         soil=soil,
-        matrix=risk_matrix(exemplo_id, delay, veranico, soil),
+        matrix=risk_matrix(exemplo_id, delay, veranico, soil, rain_override),
+        soil_group=eff_soil_group,
+        cycle_code=cycle_code,
+        rain_override=rain_override,
     )
 
 
@@ -283,13 +446,19 @@ def _water_cached(location_json: str, as_of: date, texture_group: str, depth_m: 
     n = min(rain.dates.size, temp.dates.size)
     dates, precip = rain.dates[:n], rain.precip_mm[:n]
     et0 = agua.daily_et0(temp.dates[:n], temp.tmax_c[:n], temp.tmin_c[:n], location.latitude)
+    clim = agua.et0_climatology(dates, et0)
     ref = rain_report(location, as_of).status.reference
     cad = agua.cad_mm_per_m(texture_group)
     out = {}
     for crop_id in crop_ids:
         crop = agua.crop_water(crop_id)
         hold = agua.hold_days(crop_id, cad, agua.critical_et0(dates, et0, ref, crop), depth_m)
-        out[crop_id] = (hold, agua.soil_water_today(dates, precip, et0, cad, crop_id, as_of, depth_m))
+        plan = (
+            agua.irrigation_plan(crop_id, cad, clim, as_of, is_perennial(crop_id), depth_m)
+            if is_irrigated(crop_id)
+            else None
+        )
+        out[crop_id] = (hold, agua.soil_water_today(dates, precip, et0, cad, crop_id, as_of, depth_m), plan)
     return out
 
 

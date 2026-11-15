@@ -9,9 +9,11 @@ Junta as três peças da Feature 1 para a interface:
 from __future__ import annotations
 
 import calendar
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date
 from typing import Literal
+
+import numpy as np
 
 from crop_optimizer.config import Settings, load_yaml_config
 from crop_optimizer.domain.models import LocationSpec
@@ -24,13 +26,15 @@ from crop_optimizer.engine.rain_onset import (
     build_reference,
     current_dry_days,
 )
-from crop_optimizer.ingestion.rain_history import fetch_rain_series
+from crop_optimizer.ingestion.rain_history import RainSeries, fetch_rain_series
 from crop_optimizer.ingestion.zarc_tabua import (
     ZarcDataUnavailable,
     ZarcWindow,
     load_zarc_table,
+    zarc_decendios_for_crops,
     zarc_windows_for,
 )
+from crop_optimizer.lakehouse.catalog import SeasonalClimateStats
 
 _MONTHS_PT = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"]
 WindowState = Literal["sem_indicacao", "ainda_nao_abriu", "aberta", "fechou"]
@@ -38,6 +42,10 @@ WindowState = Literal["sem_indicacao", "ainda_nao_abriu", "aberta", "fechou"]
 
 def fmt_date(d: date | None) -> str:
     return "—" if d is None else f"{d.day:02d}/{_MONTHS_PT[d.month - 1]}"
+
+
+def fmt_date_year(d: date | None) -> str:
+    return "—" if d is None else f"{d.day:02d}/{_MONTHS_PT[d.month - 1]}/{d.year}"
 
 
 @dataclass(slots=True)
@@ -53,12 +61,27 @@ class CropWindowStatus:
     def phrase(self) -> str:
         if self.window is None:
             return "Sem indicação oficial de plantio de sequeiro neste município (risco acima de 40% ou não zoneado)."
-        risk = f"risco a partir de {self.window.best_risk_pct}%, depende do solo e do ciclo"
+        if self.window.soil_group and self.window.cycle_code:
+            risk = f"risco a partir de {self.window.best_risk_pct}%"
+        elif self.window.soil_group:
+            risk = f"risco a partir de {self.window.best_risk_pct}%, varia conforme o ciclo"
+        else:
+            risk = f"risco a partir de {self.window.best_risk_pct}%, depende do solo e do ciclo"
         if self.state == "ainda_nao_abriu":
-            return f"Janela abre em {fmt_date(self.opens)} e fecha em {fmt_date(self.closes)} ({risk})."
+            return f"Janela abre em {fmt_date_year(self.opens)} e fecha em {fmt_date_year(self.closes)} ({risk})."
         if self.state == "aberta":
-            return f"Janela aberta até {fmt_date(self.closes)}: faltam {self.days_left} dias ({risk})."
-        return f"Janela fechou em {fmt_date(self.closes)}."
+            return f"Janela aberta até {fmt_date_year(self.closes)}: faltam {self.days_left} dias ({risk})."
+        return f"Janela fechou em {fmt_date_year(self.closes)}."
+
+
+@dataclass(slots=True)
+class ZarcStatusReport:
+    crop_windows: list[CropWindowStatus] = field(default_factory=list)
+    zarc_safra: str | None = None
+    zarc_error: str | None = None
+    decendios_by_crop: dict[str, list[int]] = field(default_factory=dict)
+    soil_group: str | None = None
+    cycle_code: str | None = None
 
 
 @dataclass(slots=True)
@@ -71,6 +94,9 @@ class RainDelayReport:
     zarc_error: str | None = None
     veranico: VeranicoClimatology | None = None
     dry_days_now: int = 0  # dias seguidos sem chuva até o último dado
+    decendios_by_crop: dict[str, list[int]] = field(default_factory=dict)
+    soil_group: str | None = None
+    cycle_code: str | None = None
 
     @property
     def veranico_alert(self) -> str | None:
@@ -124,8 +150,69 @@ def crop_window_status(window: ZarcWindow | None, crop_id: str, season_start: da
     return CropWindowStatus(crop_id, window, state, opens, closes, days_left)
 
 
+def fetch_location_zarc(
+    location: LocationSpec,
+    season_start: date,
+    as_of: date,
+    settings: Settings | None = None,
+    *,
+    prefetch_ibges: list[str] | None = None,
+    soil_group: str | None = None,
+    cycle_code: str | None = None,
+    progress_callback: object | None = None,
+) -> ZarcStatusReport:
+    """Carrega (e baixa se preciso) as janelas oficiais do ZARC para `location`."""
+    safra = load_yaml_config("zarc")["safra"]
+    ibge = location.ibge_code or getattr(location_map().get(location.location_id), "ibge_code", None)
+    if ibge is None:
+        return ZarcStatusReport(
+            zarc_safra=safra,
+            zarc_error=(
+                f"Município de {location.name} ainda não foi identificado com código IBGE. "
+                "Marque ou atualize a localização da roça no mapa para consultar a janela do ZARC."
+            ),
+            soil_group=soil_group,
+            cycle_code=cycle_code,
+        )
+    query_codes = sorted({ibge, *(c for c in (prefetch_ibges or []) if c)})
+    try:
+        table = load_zarc_table(query_codes, settings, progress_callback=progress_callback)  # type: ignore[arg-type]
+    except ZarcDataUnavailable as exc:
+        return ZarcStatusReport(
+            zarc_safra=safra,
+            zarc_error=str(exc),
+            soil_group=soil_group,
+            cycle_code=cycle_code,
+        )
+    windows = [
+        crop_window_status(w, crop_id, season_start, as_of)
+        for crop_id, w in zarc_windows_for(
+            table,
+            ibge,
+            soil_group=soil_group,
+            cycle_code=cycle_code,
+        ).items()
+    ]
+    decs = zarc_decendios_for_crops(table, ibge, soil_group=soil_group, cycle_code=cycle_code)
+    return ZarcStatusReport(
+        crop_windows=windows,
+        zarc_safra=safra,
+        zarc_error=None,
+        decendios_by_crop=decs,
+        soil_group=soil_group,
+        cycle_code=cycle_code,
+    )
+
+
 def build_rain_delay_report(
-    location: LocationSpec, as_of: date, settings: Settings | None = None
+    location: LocationSpec,
+    as_of: date,
+    settings: Settings | None = None,
+    *,
+    prefetch_ibges: list[str] | None = None,
+    soil_group: str | None = None,
+    cycle_code: str | None = None,
+    progress_callback: object | None = None,
 ) -> RainDelayReport:
     """Calcula a situação da chuva em `as_of`. Levanta RainDataUnavailable se não houver chuva real."""
     cfg = load_yaml_config("chuva")["referencia"]
@@ -136,29 +223,91 @@ def build_rain_delay_report(
         series.dates, series.precip_mm, criteria, int(cfg["ano_inicio"]), int(cfg["ano_fim"])
     )
     status = assess_season(series.dates, series.precip_mm, as_of, reference, criteria)
-    report = RainDelayReport(
+    zarc = fetch_location_zarc(
+        location,
+        status.season_start,
+        status.data_until,
+        settings,
+        prefetch_ibges=prefetch_ibges,
+        soil_group=soil_group,
+        cycle_code=cycle_code,
+        progress_callback=progress_callback,
+    )
+    return RainDelayReport(
         location=location,
         status=status,
         source=series.source,
+        crop_windows=zarc.crop_windows,
+        zarc_safra=zarc.zarc_safra,
+        zarc_error=zarc.zarc_error,
         veranico=VeranicoClimatology.from_config(reference, series.dates, series.precip_mm, criteria),
         dry_days_now=current_dry_days(series.dates, series.precip_mm, status.data_until, criteria.wet_day_mm),
+        decendios_by_crop=zarc.decendios_by_crop,
+        soil_group=zarc.soil_group,
+        cycle_code=zarc.cycle_code,
     )
 
-    ibge = location.ibge_code or getattr(location_map().get(location.location_id), "ibge_code", None)
-    if ibge is None:
-        report.zarc_error = f"Município {location.name} sem código IBGE: não dá para cruzar com o ZARC."
-        return report
-    try:
-        table = load_zarc_table([ibge], settings)
-    except ZarcDataUnavailable as exc:
-        report.zarc_error = str(exc)
-        return report
-    report.zarc_safra = load_yaml_config("zarc")["safra"]
-    report.crop_windows = [
-        crop_window_status(w, crop_id, status.season_start, status.data_until)
-        for crop_id, w in zarc_windows_for(table, ibge).items()
-    ]
-    return report
+
+def seasonal_stats_from_rain_series(
+    series: RainSeries,
+    base_stats: SeasonalClimateStats,
+    hydro_start_month: int | None = None,
+    veranico_prob: float | None = None,
+    veranico_lengths: tuple[int, ...] = (),
+) -> SeasonalClimateStats:
+    """Calibra médias e desvios de chuva safra/safrinha com a série NASA POWER real do ponto."""
+    h_start = hydro_start_month or 10
+    valid_mask = ~np.isnan(series.precip_mm)
+    if int(np.sum(valid_mask)) < 5 * 330:
+        if veranico_prob is None:
+            return base_stats
+        return replace(base_stats, veranico_prob=veranico_prob, veranico_lengths=veranico_lengths)
+
+    dates_obj = series.dates[valid_mask]
+    precip = np.maximum(0.0, series.precip_mm[valid_mask].astype(np.float64))
+    years = dates_obj.astype("datetime64[Y]").astype(int) + 1970
+    months = (dates_obj.astype("datetime64[M]").astype(int) % 12) + 1
+    hydro_years = np.where(months >= h_start, years, years - 1)
+
+    unique_hy, counts = np.unique(hydro_years, return_counts=True)
+    complete_years = unique_hy[counts >= 330]
+    if complete_years.size < 5:
+        if veranico_prob is None:
+            return base_stats
+        return replace(base_stats, veranico_prob=veranico_prob, veranico_lengths=veranico_lengths)
+
+    monthly_totals = np.zeros((complete_years.size, 12), dtype=np.float64)
+    for idx, hy in enumerate(complete_years):
+        in_year = hydro_years == hy
+        for m_idx in range(12):
+            monthly_totals[idx, m_idx] = float(np.sum(precip[in_year & (months == (m_idx + 1))]))
+
+    mean_by_month = monthly_totals.mean(axis=0)
+    best_start = max(
+        range(12),
+        key=lambda start: sum(float(mean_by_month[(start + k) % 12]) for k in range(5)),
+    )
+    safra_cols = [(best_start + k) % 12 for k in range(5)]
+    safrinha_cols = [m for m in range(12) if m not in safra_cols]
+
+    safra_year_totals = monthly_totals[:, safra_cols].sum(axis=1)
+    safrinha_year_totals = monthly_totals[:, safrinha_cols].sum(axis=1)
+
+    safra_mean = max(60.0, float(np.mean(safra_year_totals)))
+    safra_std = max(25.0, float(np.std(safra_year_totals, ddof=1)))
+    safrinha_mean = max(15.0, float(np.mean(safrinha_year_totals)))
+    safrinha_std = max(10.0, float(np.std(safrinha_year_totals, ddof=1)))
+
+    return replace(
+        base_stats,
+        location_id=series.location_id,
+        safra_rain_mean_mm=round(safra_mean, 1),
+        safra_rain_std_mm=round(safra_std, 1),
+        safrinha_rain_mean_mm=round(safrinha_mean, 1),
+        safrinha_rain_std_mm=round(safrinha_std, 1),
+        veranico_prob=base_stats.veranico_prob if veranico_prob is None else veranico_prob,
+        veranico_lengths=veranico_lengths if veranico_prob is not None else base_stats.veranico_lengths,
+    )
 
 
 def describe_status(status: RainSeasonStatus) -> tuple[str, str, Literal["info", "success", "warning", "error"]]:

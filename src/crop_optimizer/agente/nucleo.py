@@ -40,7 +40,19 @@ class Agente:
         self.today = today
 
     def responder(self, sessao: Sessao, texto: str) -> Resposta:
-        ctx = Contexto(local=sessao.local, simular=sessao.simular)
+        ctx = Contexto(
+            local=sessao.local,
+            simular=sessao.simular,
+            soil_group=sessao.soil_group,
+            cycle_code=sessao.cycle_code,
+            cultura_selecionada=sessao.cultura_selecionada,
+            horizonte_anos=sessao.horizonte_anos,
+            prioridade=sessao.prioridade,
+            precisa_ter=tuple(sessao.precisa_ter),
+            nao_pode_ter=tuple(sessao.nao_pode_ter),
+            culturas_atuais=tuple(sessao.culturas_atuais),
+            fazenda_resumo=sessao.fazenda_resumo,
+        )
         if self.today is not None:
             ctx.hoje = self.today
         self._uso: dict[str, int] = {}
