@@ -13,7 +13,7 @@ def register(name: str, page: st.Page) -> st.Page:
 
 
 def link(name: str, label: str, icon: str | None = None) -> None:
-    """Link para outra página (some sem erro se a página não estiver registrada, ex.: em testes)."""
+    """Link para outra página (some sem erro se a navegação não estiver ativa, ex.: em testes)."""
     page = _PAGES.get(name)
-    if page is not None:
+    if page is not None and hasattr(page, "_icon"):
         st.page_link(page, label=label, icon=icon)

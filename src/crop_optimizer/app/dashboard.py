@@ -52,6 +52,7 @@ from crop_optimizer.app.common import (
 from crop_optimizer.app.common import lakehouse_catalog as _get_lakehouse_catalog
 from crop_optimizer.app.common import rain_delay_report as _rain_delay_report
 from crop_optimizer.app.common import zarc_status as _zarc_status
+from crop_optimizer.app.conversa_page import conversa_page
 from crop_optimizer.app.home_page import crop_names, home_page
 from crop_optimizer.app.icons import CROP_ICONS
 from crop_optimizer.app.satellite_page import satellite_page
@@ -888,6 +889,7 @@ PLANTIO_PAGE = navigation.register("plantio", st.Page(plantio_page, title="Plant
 SATELLITE_PAGE = navigation.register(
     "satelite", st.Page(satellite_page, title="Satélite", url_path="satelite")
 )
+CONVERSA_PAGE = navigation.register("conversa", st.Page(conversa_page, title="Conversa", url_path="conversa"))
 
 
 def main() -> None:
@@ -895,7 +897,7 @@ def main() -> None:
     theme.inject()
     # sem barra lateral o Streamlit mostraria o icon_image; queremos o letreiro "Acauã" sempre
     st.logo(theme.asset("logo_marca.png"), size="large")
-    st.navigation([HOME_PAGE, PLANTIO_PAGE, SATELLITE_PAGE], position="top").run()
+    st.navigation([HOME_PAGE, PLANTIO_PAGE, SATELLITE_PAGE, CONVERSA_PAGE], position="top").run()
 
 
 if __name__ == "__main__":

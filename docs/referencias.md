@@ -446,3 +446,15 @@ por cálculo.
 | God's Eye View (repositório local `../gods-eye-view`, de Bilawal Sidhu) | Só **padrões**, sem copiar código: (1) cada camada mostra seu estado (atual, mais recente, fixo, sem dado); (2) atribuição de cada fonte na tela e num documento de fontes (o `DATA_SOURCES.md` deles inspirou esta seção 3). | MIT (código). Os dados de lá têm licenças próprias e não foram usados. |
 | Mock "O que o satélite vê na sua roça" (equipe) | Layout da página Satélite: lentes à esquerda, mapa com a roça, ano embaixo, cartões à direita. | Interno |
 
+
+### 6.3 Serviços do chatbot (Feature 8)
+
+| Serviço | Link | Onde usamos | Conferido |
+|---|---|---|---|
+| OpenAI Responses API (function calling) | <https://platform.openai.com/docs/guides/function-calling> | `agente/openai_api.py`, `agente/nucleo.py` | Formato conferido em chamadas reais em 15/11/2026 (`function_call`, `function_call_output`, `store: false` com raciocínio cifrado entre rodadas) |
+| OpenAI transcrição de áudio | <https://platform.openai.com/docs/guides/speech-to-text> | `agente/voz.py` → `transcrever()` | Chamada real com .ogg/opus em 15/11/2026 |
+| OpenAI voz (text to speech) | <https://platform.openai.com/docs/guides/text-to-speech> | `agente/voz.py` → `falar()` | Chamada real (`response_format: opus`) em 15/11/2026 |
+| Twilio WhatsApp Sandbox | <https://www.twilio.com/docs/whatsapp/sandbox> | `canais/whatsapp.py`, `accessibility/whatsapp.py` (sem uso por enquanto) | Conta conferida pela API em 15/11/2026. A conta gratuita não deixa configurar o webhook: canal parado |
+| Twilio: segurança do webhook (X-Twilio-Signature) | <https://www.twilio.com/docs/usage/webhooks/webhooks-security> | `canais/whatsapp.py` → `calcular_assinatura()` | ❌ Algoritmo implementado de memória (HMAC-SHA1 da URL + parâmetros em ordem); falta validar com uma requisição real do Twilio |
+| Cloudflare Quick Tunnels | <https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/do-more-with-tunnels/trycloudflare/> | expõe a API local para o Twilio | Usado em teste em 15/11/2026 (`cloudflared` 2025.11.1, SHA-256 conferido com a release); hoje sem uso |
+| Streamlit `st.chat_input` com áudio | <https://docs.streamlit.io/develop/api-reference/chat/st.chat_input> | `app/conversa_page.py` (`accept_audio=True`) | Conferido na assinatura da versão instalada (1.67.0) |

@@ -116,7 +116,7 @@ def test_whatsapp_twilio_client_dry_run_and_live_mock() -> None:
         assert live_res.sid == "SM999"
 
 
-def test_http_api_endpoints_and_twilio_webhook(tmp_path: Path) -> None:
+def test_http_api_endpoints(tmp_path: Path) -> None:
     app = create_app(get_settings(data_dir=tmp_path))
     client = TestClient(app)
 
@@ -143,6 +143,4 @@ def test_http_api_endpoints_and_twilio_webhook(tmp_path: Path) -> None:
     assert r_pdf.headers["content-type"] == "application/pdf"
     assert r_pdf.content.startswith(b"%PDF")
 
-    r_wa = client.post("/api/v1/whatsapp/webhook", data={"Body": "atraso 28 quixada", "From": "whatsapp:+558899999999"})
-    assert r_wa.status_code == 200
-    assert "<Response><Message>" in r_wa.text
+    # o webhook do WhatsApp tem testes próprios em tests/test_canal_whatsapp.py

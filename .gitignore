@@ -14,6 +14,8 @@ __pycache__/
 data/bronze/*
 data/silver/*
 data/gold/*
+# Conversas do WhatsApp (sessões e áudios das respostas): nunca vão para o git
+data/conversa/
 !data/bronze/.gitkeep
 !data/silver/.gitkeep
 !data/gold/.gitkeep

@@ -146,6 +146,80 @@ def cmd_api(host: str = "127.0.0.1", port: int = 8000) -> None:
     uvicorn.run(create_app(), host=host, port=port)
 
 
+def cmd_whatsapp(host: str = "127.0.0.1", port: int = 8000) -> None:
+    """Serve só o WhatsApp (webhook, /media e /health), para expor pelo túnel. Recusa subir sem a assinatura."""
+    settings = get_settings()
+    missing = [name for name, value in (("ACAUA_PUBLIC_URL", settings.public_url),
+                                        ("TWILIO_AUTH_TOKEN", settings.twilio_auth_token),
+                                        ("TWILIO_ACCOUNT_SID", settings.twilio_account_sid),
+                                        ("OPENAI_API_KEY", settings.openai_api_key)) if not value]
+    if missing:
+        sys.exit(f"Falta no .env: {', '.join(missing)}. Sem isso o webhook não confere quem chama.")
+    print(f"WhatsApp do Acauã em http://{host}:{port} (só /health, webhook e /media)")
+    print(f"Webhook para o Twilio: {settings.public_url}/api/v1/whatsapp/webhook (POST)")
+    uvicorn.run(create_app(settings, somente_whatsapp=True), host=host, port=port)
+
+
+def cmd_conversa(
+    texto: str | None,
+    sessao_id: str = "terminal",
+    data: str | None = None,
+    sem_ia: bool = False,
+    nova: bool = False,
+    audio: str | None = None,
+    falar_resposta: bool = False,
+) -> None:
+    """Conversa com o agente no terminal (o mesmo agente do WhatsApp). Sem texto: modo interativo."""
+    from datetime import date
+
+    from crop_optimizer.agente.nucleo import Agente
+    from crop_optimizer.agente.openai_api import OpenAIClient
+    from crop_optimizer.agente.sessao import SessaoStore
+    from crop_optimizer.agente.voz import falar, transcrever
+
+    store = SessaoStore()
+    if nova:
+        store.apagar(sessao_id)
+    sessao = store.carregar(sessao_id)
+    if data:
+        sessao.simular = date.fromisoformat(data)
+    agente = Agente(client=OpenAIClient(api_key="") if sem_ia else None)
+
+    def turno(pergunta: str) -> None:
+        resposta = agente.responder(sessao, pergunta)
+        store.salvar(sessao)
+        print(f"\nAcauã: {resposta.texto}")
+        print(f"  [{resposta.fonte}; ferramentas: {', '.join(resposta.ferramentas) or 'nenhuma'}"
+              + (f"; {' | '.join(resposta.observacoes)}" if resposta.observacoes else "") + "]")
+        if resposta.uso:
+            u = resposta.uso
+            print(f"  [tokens: {u['rodadas']} rodada(s), entrada {u['entrada']} ({u['entrada_em_cache']} em cache), "
+                  f"saída {u['saida']} ({u['raciocinio']} de raciocínio)]")
+        if falar_resposta:
+            som = falar(resposta.texto)
+            print(f"  [áudio da resposta ({som.provider}): {som.path}]")
+        print()
+
+    if audio:
+        path = Path(audio)
+        mime = {".ogg": "audio/ogg", ".opus": "audio/ogg", ".mp3": "audio/mpeg", ".m4a": "audio/mp4",
+                ".wav": "audio/wav"}.get(path.suffix.lower(), "audio/ogg")
+        texto = transcrever(path.read_bytes(), mime)
+        print(f"Você (áudio transcrito): {texto}")
+    if texto:
+        turno(texto)
+        return
+    print("Converse com o Acauã (linha vazia ou 'sair' para terminar).")
+    while True:
+        try:
+            pergunta = input("Você: ").strip()
+        except EOFError:
+            break
+        if not pergunta or pergunta.lower() == "sair":
+            break
+        turno(pergunta)
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
         prog="crop-opt",
@@ -176,6 +250,19 @@ def main(argv: list[str] | None = None) -> None:
     p_api.add_argument("--host", default="127.0.0.1")
     p_api.add_argument("--port", type=int, default=8000)
 
+    p_wa = subparsers.add_parser("whatsapp", help="Serve só o webhook do WhatsApp (para expor pelo túnel)")
+    p_wa.add_argument("--host", default="127.0.0.1")
+    p_wa.add_argument("--port", type=int, default=8000)
+
+    p_conv = subparsers.add_parser("conversa", help="Conversa com o agente do Acauã no terminal")
+    p_conv.add_argument("texto", nargs="?", default=None, help="Pergunta; sem ela, abre o modo interativo")
+    p_conv.add_argument("--sessao", default="terminal", help="Chave da conversa (no WhatsApp é o número)")
+    p_conv.add_argument("--data", default=None, help="Simular outro dia (AAAA-MM-DD), para demonstração")
+    p_conv.add_argument("--sem-ia", action="store_true", help="Responder só com as regras, sem a OpenAI")
+    p_conv.add_argument("--nova", action="store_true", help="Esquecer a conversa anterior desta sessão")
+    p_conv.add_argument("--audio", default=None, help="Arquivo de áudio com a pergunta (.ogg, .mp3, .m4a)")
+    p_conv.add_argument("--falar", action="store_true", help="Gerar também o áudio da resposta")
+
     args = parser.parse_args(argv)
     if args.command == "elt":
         cmd_elt(data_dir=args.data_dir, mode=args.mode, include_zarc=args.include_zarc)
@@ -194,6 +281,10 @@ def main(argv: list[str] | None = None) -> None:
         cmd_app()
     elif args.command == "api":
         cmd_api(host=args.host, port=args.port)
+    elif args.command == "whatsapp":
+        cmd_whatsapp(host=args.host, port=args.port)
+    elif args.command == "conversa":
+        cmd_conversa(args.texto, args.sessao, args.data, args.sem_ia, args.nova, args.audio, args.falar or bool(args.audio))
 
 
 if __name__ == "__main__":
