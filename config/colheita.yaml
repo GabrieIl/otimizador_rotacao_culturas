@@ -1,0 +1,9 @@
+# Régua única de "quebra de safra", usada no aviso por cultura e no ranking das rotações.
+#
+# Colheita relativa = o que a lavoura colheu / o que ela colhe nesta terra num ano sem falta de água.
+# Para grãos (milho, caupi, sorgo) conta o grão; para as forrageiras perenes (palma, buffel), a forragem.
+# Numa rotação, é a média das culturas do ano (cada uma com a mesma área).
+#
+# Quebra de safra = colheita relativa abaixo do limiar.
+quebra_safra:
+  limiar_colheita_relativa: 0.5  # CONFERIR / REVISAR AGRÔNOMO: "colheu menos da metade do normal"

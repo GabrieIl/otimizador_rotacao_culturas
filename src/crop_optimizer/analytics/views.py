@@ -7,18 +7,18 @@ import polars as pl
 
 from crop_optimizer.domain.models import (
     CropSpec,
-    SeasonSlot,
+    SimulationConfig,
     StrategySimulationResult,
     TrafficLightLevel,
 )
 from crop_optimizer.domain.presets import crop_map
-from crop_optimizer.engine.monte_carlo import _delay_and_veranico_penalty
+from crop_optimizer.engine.monte_carlo import MonteCarloRotationEngine
 from crop_optimizer.lakehouse.catalog import SeasonalClimateStats
 
 
 def loss_risk_label(horizon_years: int) -> str:
-    """Rótulo do risco que o motor calcula: 2 anos seguidos de perda; com 1 ano, perder a safra."""
-    return "risco de 2 anos seguidos de perda" if horizon_years >= 2 else "risco de perder a safra no ano"
+    """Rótulo do risco que o motor calcula: 2 quebras de safra seguidas; com 1 ano, a quebra no ano."""
+    return "risco de 2 quebras de safra seguidas" if horizon_years >= 2 else "risco de quebra de safra no ano"
 
 
 def classify_traffic_light(failure_prob_pct: float) -> TrafficLightLevel:
@@ -34,13 +34,17 @@ def build_planting_window_risk_matrix(
     climate_stats: SeasonalClimateStats,
     target_crops: list[CropSpec] | None = None,
     delay_days_grid: list[int] | None = None,
-    veranico_days: int = 10,
     n_samples: int = 10_000,
     seed: int = 42,
+    config: SimulationConfig | None = None,
 ) -> pl.DataFrame:
     """
-    Visão 1 (Semáforo Agrícola): Matriz de Atraso das Chuvas × Culturas.
-    Exibe tanto o nível do semáforo (Verde/Amarelo/Vermelho) quanto o risco numérico técnico.
+    Visão 1 (Semáforo Agrícola): Matriz de Atraso das Chuvas x Culturas.
+
+    Usa o MESMO motor do ranking das rotações (cada cultura plantada sozinha, 1 ano), com o veranico
+    sorteado do histórico real e a mesma régua de quebra de safra (config/colheita.yaml).
+    `config` traz o solo de hoje (estado, matéria orgânica, nitrogênio, fator por cultura); o
+    `veranico_days` dele é um veranico FIXO somado ao sorteado (o app usa 0).
     """
     catalog = crop_map()
     targets = target_crops or [
@@ -51,44 +55,24 @@ def build_planting_window_risk_matrix(
         catalog["capim_buffel"],
     ]
     delays = delay_days_grid or [0, 7, 14, 21, 28, 35]
-
-    rng = np.random.default_rng(seed)
-    rain_draws = np.maximum(
-        55.0,
-        rng.normal(
-            climate_stats.safra_rain_mean_mm,
-            climate_stats.safra_rain_std_mm,
-            size=n_samples,
-        ),
+    base = (config or SimulationConfig()).model_copy(
+        update={"n_scenarios": n_samples, "seed": seed}
     )
+    engine = MonteCarloRotationEngine(crops_catalog=catalog)
 
     rows: list[dict[str, object]] = []
     for delay in delays:
+        cfg = base.model_copy(update={"safra_delay_days": delay})
         for crop in targets:
-            extra_stress, yield_cap = _delay_and_veranico_penalty(
-                delay,
-                veranico_days,
-                SeasonSlot.SAFRA,
-                crop,
-            )
-            rain_req = (
-                430.0
-                if crop.crop_id == "milho_sertanejo"
-                else (270.0 if not crop.is_cover_crop else 160.0)
-            )
-            deficit = np.clip((rain_req - rain_draws) / rain_req, 0.0, 0.90)
-            stress = np.clip(deficit * crop.drought_sensitivity + extra_stress, 0.0, 0.95)
-            yield_ratio = yield_cap * (1.0 - 0.92 * stress)
-            severe_loss_prob = float(np.mean(yield_ratio < 0.65) * 100.0)
-            light = classify_traffic_light(severe_loss_prob)
-
+            failure_pct = engine.harvest_failure_prob(crop.crop_id, climate_stats, cfg) * 100.0
+            light = classify_traffic_light(failure_pct)
             rows.append(
                 {
                     "delay_days": delay,
                     "delay_label": f"+{delay} dias" if delay > 0 else "No Tempo (0d)",
                     "crop_id": crop.crop_id,
                     "crop_name": crop.name,
-                    "failure_prob_pct": round(severe_loss_prob, 1),
+                    "failure_prob_pct": round(failure_pct, 1),
                     "traffic_light": light.value,
                     "traffic_guidance": light.guidance,
                     "cell_display": f"{light.label}: {light.guidance}",

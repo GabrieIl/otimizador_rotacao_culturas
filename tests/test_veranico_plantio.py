@@ -95,6 +95,6 @@ def test_texts_without_name_and_by_horizon() -> None:
     assert radio5.startswith("Alô, Dona Maria!") and "próximos 5 anos" in radio5 and "12 dias de atraso" in radio5
     wa = build_whatsapp_summary_message("", loc, 0, TrafficLightLevel.VERDE, res[0], res[1])
     assert "Olá!" in wa and "Seu João" not in wa
-    assert loss_risk_label(1) == "risco de perder a safra no ano"
-    assert loss_risk_label(3) == "risco de 2 anos seguidos de perda"
+    assert loss_risk_label(1) == "risco de quebra de safra no ano"
+    assert loss_risk_label(3) == "risco de 2 quebras de safra seguidas"
     assert SimulationConfig().farmer_name == ""
