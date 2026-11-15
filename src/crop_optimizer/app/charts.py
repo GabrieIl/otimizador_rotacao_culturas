@@ -79,7 +79,7 @@ def plot_survival_scoreboard(df_scoreboard: pl.DataFrame) -> go.Figure:
         go.Bar(
             y=pdf["short_name"],
             x=pdf["loss_years_of_10"],
-            name="Anos de Perda Severa (em 10)",
+            name="Anos com quebra de safra (em 10)",
             orientation="h",
             marker_color=COLORS.vermelho,
             text=[f"{v}/10 perda" if v > 0 else "" for v in pdf["loss_years_of_10"]],
@@ -109,12 +109,12 @@ def plot_balance_scale_bars(df_balance: pl.DataFrame) -> go.Figure:
         orientation="h",
         text="raw_label",
         color_discrete_map={
-            "Comida (Grão)": COLORS.ocre,
+            "Grãos": COLORS.ocre,
             "Forragem (Rebanho)": COLORS.verde,
             "Escudo (Anti-Colapso)": COLORS.petroleo,
         },
         labels={"score": "Índice da Balança (0 a 100)", "strategy_name": "Rotação", "pillar": "Pilar"},
-        title="Comida, forragem e escudo de cada rotação",
+        title="Grãos, forragem e estabilidade de cada rotação",
     )
     fig.update_layout(xaxis=dict(range=[0, 115]), legend=dict(orientation="h", y=-0.22), margin=dict(l=20, r=20, t=55, b=20))
     return plotly_layout(fig, height=400)
@@ -192,7 +192,7 @@ def plot_pareto_frontier(
         )
 
     fig.update_layout(
-        title="Fronteira técnica: risco x comida (para o técnico)",
+        title="Fronteira técnica: risco x produção (para o técnico)",
         xaxis_title=x_title,
         yaxis_title=y_title,
         margin=dict(l=20, r=20, t=55, b=20),
@@ -201,13 +201,13 @@ def plot_pareto_frontier(
 
 
 def plot_rotation_years(result, family_target: float, herd_target: float) -> go.Figure:
-    """Comida e forragem por ano de UMA rotação: mediana e faixa (10% piores a 10% melhores cenários)."""
+    """Grãos e forragem por ano de UMA rotação: mediana e faixa (10% piores a 10% melhores cenários)."""
     from plotly.subplots import make_subplots
 
     years = list(range(1, result.annual_food_kg_ha.shape[1] + 1))
-    fig = make_subplots(rows=1, cols=2, subplot_titles=("Comida (kg de grão por ha)", "Forragem (kg por ha)"))
+    fig = make_subplots(rows=1, cols=2, subplot_titles=("Grãos (kg por ha)", "Forragem (kg por ha)"))
     for col, arr, target, color, name in (
-        (1, result.annual_food_kg_ha, family_target, COLORS.ocre, "comida"),
+        (1, result.annual_food_kg_ha, family_target, COLORS.ocre, "grãos"),
         (2, result.annual_forage_kg_ha, herd_target, COLORS.verde, "forragem"),
     ):
         p10, p50, p90 = (np.percentile(arr, q, axis=0) for q in (10, 50, 90))
@@ -217,7 +217,7 @@ def plot_rotation_years(result, family_target: float, herd_target: float) -> go.
         fig.add_trace(go.Scatter(x=years, y=p50, mode="lines+markers", line=dict(color=color, width=3),
                                  name=f"{name} (cenário do meio)", showlegend=False), row=1, col=col)
         fig.add_hline(y=target, line=dict(color=COLORS.vermelho, dash="dash", width=1.5), row=1, col=col,
-                      annotation_text="o que a família precisa" if col == 1 else "o que o rebanho precisa",
+                      annotation_text="consumo da casa" if col == 1 else "consumo do rebanho",
                       annotation_font_size=11, annotation_font_color=COLORS.vermelho)
     fig.update_xaxes(title_text="ano", dtick=1)
     fig.update_layout(margin=dict(l=20, r=20, t=50, b=20))

@@ -122,7 +122,19 @@ li .pill { flex:none; min-width:6.4rem; justify-content:center; }
 .req b { display:block; font-size:.75rem; color:var(--sub); font-weight:500; }
 .req span { font-weight:600; }
 .rodape { color:var(--sub); font-size:.82rem; margin-top:1rem; }
-@media (max-width: 640px) { .topo .ico { width:72px; height:72px; } h2 { font-size:1.6rem; } }
+.agua { margin-top:1.2rem; padding-top:1rem; border-top:1px solid var(--areia); }
+.dias { display:grid; grid-template-columns: minmax(9rem, auto) 1fr; gap:.45rem .8rem; align-items:center; margin:.5rem 0 .2rem 0; }
+.dias .lab { font-size:.86rem; color:var(--pet2); }
+.dias .trilho { height:22px; background:var(--areia); border-radius:4px; position:relative; }
+.dias .trilho span { position:absolute; left:0; top:0; bottom:0; border-radius:4px; display:flex; align-items:center;
+  justify-content:flex-end; padding-right:.45rem; color:#fff; font-weight:700; font-size:.8rem; min-width:2.6rem; }
+.b-veranico { background:var(--pet); } .b-ok { background:var(--verde); } .b-curto { background:var(--verm); } .b-neutro { background:var(--pet2); }
+.frase { font-size:.95rem; line-height:1.45; margin:.45rem 0 0 0; }
+.tanque { height:14px; background:var(--areia); border-radius:7px; position:relative; margin:.5rem 0 .3rem 0; }
+.tanque .agua-hoje { position:absolute; left:0; top:0; bottom:0; border-radius:7px; background:var(--pet2); }
+.tanque .normal { position:absolute; top:-4px; bottom:-4px; width:2px; background:var(--terra); }
+.legenda { font-size:.78rem; color:var(--sub); }
+@media (max-width: 640px) { .topo .ico { width:72px; height:72px; } h2 { font-size:1.6rem; } .dias { grid-template-columns: 1fr; } }
 """,
     """
 export default function(component) {
@@ -142,8 +154,25 @@ export default function(component) {
     ${score}
     ${reqs ? `<div class="secao"><p class="rot">O que esta cultura precisa</p><div class="reqs">${reqs}</div></div>` : ''}
     ${fat ? `<div class="secao"><p class="rot">${esc(d.factors_title || 'Fator por fator')}</p><ul>${fat}</ul></div>` : ''}
+    ${agua(d.agua)}
     ${d.foot ? `<p class="rodape">${esc(d.foot)}</p>` : ''}
   </div>`;
+}
+
+function agua(a) {
+  if (!a) return '';
+  const max = Math.max(1, ...(a.bars || []).map((b) => b.days || 0)) * 1.1;
+  const bars = (a.bars || []).map((b) => `<span class="lab">${esc(b.label)}</span>
+    <div class="trilho"><span class="b-${esc(b.tone)}" style="width:${Math.max(6, 100 * (b.days || 0) / max)}%">${esc(b.days)} d</span></div>`).join('');
+  const solo = a.solo ? `<div class="secao"><p class="rot">${esc(a.solo.title)}</p>
+    <div class="tanque" role="img" aria-label="${esc(a.solo.text)}"><span class="agua-hoje" style="width:${Math.max(2, 100 * a.solo.fill)}%"></span>
+      ${a.solo.normal == null ? '' : `<span class="normal" style="left:${100 * a.solo.normal}%"></span>`}</div>
+    <p class="legenda">Barra: água no solo hoje · traço: o normal desta data</p>
+    <p class="frase">${esc(a.solo.text)}</p></div>` : '';
+  return `<div class="agua"><p class="rot">${esc(a.title)}</p>
+    ${bars ? `<div class="dias">${bars}</div>` : ''}
+    ${a.phrase ? `<p class="frase">${esc(a.phrase)}</p>` : ''}
+    ${solo}</div>`;
 }
 """,
 )
@@ -433,7 +462,9 @@ export default function(component) {
       <div class="pos">${i + 1}</div>
       <div><p class="nome">${esc(it.name)}</p>
         <div class="chips"><span>colhe em <b>${it.aguenta} de 10 anos</b></span><span>${esc(it.risco)}</span>
-          <span>comida <b>${esc(it.comida)}</b></span><span>forragem <b>${esc(it.forragem)}</b></span></div>
+          <span>grãos <b>${esc(it.graos)}</b></span><span>forragem <b>${esc(it.forragem)}</b></span>
+          ${it.renda ? `<span>renda <b>${esc(it.renda)}</b></span>` : ''}
+          ${it.seca ? `<span>${esc(it.seca)}</span>` : ''}</div>
         <div class="nota" title="nota ${Math.round(it.nota)} de 100 para a prioridade escolhida"><span style="width:${Math.max(2, Math.min(100, it.nota))}%"></span></div></div>
       <button class="det anim" data-id="${esc(it.id)}">${it.id === data.detail ? 'Fechar' : 'Detalhar'}</button></div>`).join('') + '</div>';
   root.querySelectorAll('.det').forEach((b) => { b.onclick = () => setStateValue('detail', b.dataset.id === data.detail ? '' : b.dataset.id); });

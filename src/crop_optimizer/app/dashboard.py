@@ -20,9 +20,11 @@ from crop_optimizer.analytics.crop_advice import crop_verdict
 from crop_optimizer.analytics.rain_calendar import calendar_months, dry_spells
 from crop_optimizer.analytics.rain_delay import CropWindowStatus, describe_status, fmt_date
 from crop_optimizer.analytics.soil_suitability import (
+    TEXTURE_LABELS,
     available_nitrogen_kg_ha,
     evaluate,
     initial_markov_state,
+    texture_class,
 )
 from crop_optimizer.analytics.views import loss_risk_label
 from crop_optimizer.app import components, navigation, theme
@@ -37,6 +39,7 @@ from crop_optimizer.app.common import (
     rain_chance,
     rain_series,
     soil_profile,
+    water_by_crop,
     zarc_decendios,
 )
 from crop_optimizer.app.common import lakehouse_catalog as _get_lakehouse_catalog
@@ -50,8 +53,9 @@ from crop_optimizer.domain.models import BalancePriority, SimulationConfig, Soil
 from crop_optimizer.domain.presets import DEFAULT_STRATEGIES
 from crop_optimizer.domain.roca import nearest_preset
 from crop_optimizer.engine import MonteCarloRotationEngine, compute_pareto_frontier
-from crop_optimizer.engine.pareto import rank_by_balance_priority
+from crop_optimizer.engine.pareto import annual_profit, rank_by_balance_priority
 from crop_optimizer.engine.rain_onset import OnsetCriteria
+from crop_optimizer.ingestion.power_temperature import TemperatureUnavailable
 from crop_optimizer.ingestion.rain_history import RainDataUnavailable
 from crop_optimizer.ingestion.zarc_tabua import decendio_end_label, decendio_start_label
 
@@ -62,10 +66,60 @@ DEFAULT_HORIZON = 5
 _TONE_PILL = {"verde": "Pode plantar", "amarelo": "Arriscado", "vermelho": "Não plante", "espera": "Espere"}
 _PRIORITY = {
     BalancePriority.EQUILIBRADO: "Equilíbrio",
-    BalancePriority.COMIDA: "Comida na mesa",
-    BalancePriority.FORRAGEM: "Salvar o rebanho",
-    BalancePriority.ESCUDO: "Evitar anos de perda",
+    BalancePriority.COMIDA: "Produção de grãos",
+    BalancePriority.FORRAGEM: "Forragem",
+    BalancePriority.ESCUDO: "Estabilidade",
+    BalancePriority.RENDA: "Renda",
 }
+
+
+def _round5(mm: float) -> int:
+    return max(5, int(5 * round(mm / 5)))
+
+
+def _water_block(crop_id: str, crop_name: str, water: dict | None, veranico_days: int | None,
+                 texture_group: str, depth_cm: float | None) -> dict | None:
+    """Bloco "água" do aviso: dias que a lavoura aguenta x veranico típico, e a água no solo hoje."""
+    if water is None or crop_id not in water:
+        return None
+    hold, today = water[crop_id]
+    nome = crop_name.lower()
+    o_nome = f"{'a' if nome.startswith('palma') else 'o'} {nome}"
+    bars = []
+    if veranico_days:
+        bars.append({"label": "Veranico típico daqui", "days": veranico_days, "tone": "veranico"})
+    if hold.days is None:
+        phrase = (f"A {nome} guarda água na própria raquete e atravessa veranicos longos: "
+                  "a conta de dias sem chuva não se aplica a ela.")
+    else:
+        short = veranico_days is not None and hold.days < veranico_days
+        bars.append({"label": f"Quanto {o_nome} aguenta", "days": hold.days,
+                     "tone": "curto" if short else ("ok" if veranico_days else "neutro")})
+        if veranico_days is None:
+            head = f"Na floração, {o_nome} aguenta {hold.days} dias sem chuva neste solo."
+        elif short:
+            head = f"O veranico daqui costuma passar do que {o_nome} aguenta: {veranico_days} dias contra {hold.days}."
+        else:
+            head = f"{crop_name} aguenta o veranico típico daqui: {hold.days} dias contra {veranico_days}."
+        depth = (f" O solo raso ({depth_cm:.0f} cm) limita a raiz." if hold.limited_by_depth else
+                 "" if depth_cm is not None else
+                 " Profundidade do solo não informada: contamos a raiz inteira (em solo raso, aguenta menos).")
+        etc = f"{hold.etc_mm_day:.1f}".replace(".", ",")
+        phrase = (f"{head} Neste solo ({TEXTURE_LABELS[texture_group]}), a raiz alcança cerca de "
+                  f"{hold.raw_mm:.0f} mm de água sem sofrer e, na floração, a lavoura gasta {etc} mm por dia.{depth}")
+    solo = None
+    if today is not None:
+        normal = "" if today.normal_fraction is None else (
+            f" O normal desta data é {round(today.normal_fraction * 10)} de 10.")
+        need = (f" Faltam cerca de {_round5(today.missing_mm)} mm de chuva para a camada da raiz ficar sem "
+                "falta de água para plantar." if today.missing_mm > 0 else
+                " A camada da raiz está sem falta de água para plantar.")
+        solo = {"title": f"Água no solo em {fmt_date(today.day)}",
+                "fill": round(today.fraction, 3),
+                "normal": None if today.normal_fraction is None else round(today.normal_fraction, 3),
+                "text": (f"O solo está com {round(today.fraction * 10)} de 10 partes da água que a camada da raiz "
+                         f"segura.{normal}{need} Estimado com a chuva e a temperatura do NASA POWER.")}
+    return {"title": "Quantos dias a terra segura a lavoura", "bars": bars, "phrase": phrase, "solo": solo}
 
 
 def _climate_stats(location_id: str, veranico_prob: float | None, veranico_lengths: tuple[int, ...]):
@@ -74,6 +128,17 @@ def _climate_stats(location_id: str, veranico_prob: float | None, veranico_lengt
     if veranico_prob is None:
         return stats
     return replace(stats, veranico_prob=veranico_prob, veranico_lengths=veranico_lengths)
+
+
+def _rotation_drought(sequence: list[str], names: dict[str, str], water: dict | None) -> str:
+    """A lavoura mais sensível da rotação e quantos dias ela aguenta sem chuva na floração."""
+    if water is None:
+        return ""
+    days = [(water[c][0].days, c) for c in sequence if c in water and water[c][0].days is not None]
+    if not days:
+        return "aguenta veranicos longos (palma)"
+    d, crop = min(days)
+    return f"aguenta {d} dias sem chuva ({names.get(crop, crop).lower()})"
 
 
 def _soil_config(location_id: str, soil: dict) -> SimulationConfig:
@@ -293,6 +358,14 @@ def plantio_page() -> None:
     store("cultura", chosen)
     verdict = verdicts[chosen]
 
+    texture_group = texture_class(profile.get("areia_pct"), profile.get("argila_pct"))
+    veranico_typical = veranico.typical_longest if veranico is not None and veranico.seasons_with_onset else None
+    try:
+        water = water_by_crop(loc_json, as_of, texture_group, profile.depth_m, tuple(names))
+    except (RainDataUnavailable, TemperatureUnavailable) as exc:
+        water = None
+        st.warning(f"Não foi possível calcular a água da roça: {exc}")
+
     st.html('<div style="height:.75rem"></div>')
     left, right = st.columns([1, 1.25], gap="large")
     with left:
@@ -304,7 +377,10 @@ def plantio_page() -> None:
             foot = (f"O risco usa o clima de exemplo de {nearest.name}/{nearest.state} (a {nearest_km:.0f} km da roça). "
                     "A chuva e o ZARC são do ponto da roça.")
         components.crop_hero({"icon": CROP_ICONS[chosen], "eyebrow": "O aviso do Acauã", "title": names[chosen],
-                              "verdict": verdict.word, "tone": verdict.level, "text": verdict.reason, "foot": foot},
+                              "verdict": verdict.word, "tone": verdict.level, "text": verdict.reason,
+                              "agua": _water_block(chosen, names[chosen], water, veranico_typical, texture_group,
+                                                   profile.depth_cm),
+                              "foot": foot},
                              key="aviso_plantio")
     st.html('<div style="height:.75rem"></div>')
     components.delay_risk(_delay_data(df_matrix, chosen, delay), key="atraso_plantio")
@@ -316,9 +392,9 @@ def plantio_page() -> None:
 
     # --- ranking das rotações ---------------------------------------------------------
     theme.divider()
-    theme.label("Rotações · 10.000 cenários")
-    st.header("Ranking das rotações", anchor=False)
-    st.markdown("Da rotação que mais aguenta para a que menos aguenta, conforme o que pesa mais para a família.")
+    theme.label("Ranking das rotações · 10.000 cenários")
+    st.header("Qual plano rende mais estável?", anchor=False)
+    st.markdown("Da melhor para a pior rotação, conforme o que pesa mais no seu plano.")
     c_h, c_p = st.columns([1, 1.4])
     with c_h:
         keep("horizonte", DEFAULT_HORIZON)
@@ -349,11 +425,16 @@ def plantio_page() -> None:
         "id": r.strategy.strategy_id, "name": r.strategy.short_name or r.strategy.name,
         "aguenta": r.survival_score_of_10,
         "risco": f"{risk_txt} em {round(r.prob_two_consecutive_losses * 10)} de 10 cenários",
-        "comida": f"{r.expected_food_kg_ha_year:,.0f} kg/ha·ano".replace(",", "."),
+        "graos": f"{r.expected_food_kg_ha_year:,.0f} kg/ha·ano".replace(",", "."),
         "forragem": f"{r.expected_forage_kg_ha_year:,.0f} kg/ha·ano".replace(",", "."),
+        "renda": f"R$ {annual_profit(r):,.0f}/ha·ano".replace(",", "."),
+        "seca": _rotation_drought(r.strategy.annual_sequence, names, water),
         "nota": score,
     } for r, score in ranked]
     detail = components.rotation_ranking(items, stored("rotacao_detalhe", ""), key="ranking_rotacoes")
+    st.caption("Colhe = anos sem quebra de safra (colher menos da metade do normal). Renda estimada com preços e "
+               "custos de referência fixos do modelo, não com a cotação de hoje. Os dias de seca são da lavoura "
+               "mais sensível da rotação, na floração, neste solo.")
     store("rotacao_detalhe", detail)
     by_id = {r.strategy.strategy_id: r for r in results}
     if detail and detail in by_id:

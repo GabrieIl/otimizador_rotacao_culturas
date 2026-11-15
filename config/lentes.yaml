@@ -19,6 +19,17 @@ o_que_nao_ve: >-
   Adubo, praga, preço e a mão de obra da família. Isso quem sabe é a
   senhora, o senhor e o técnico.
 
+# Frase de cada lente sobre a roça (analytics/lens_insights.py).
+insights:
+  # Risco de enxurrada por classe de relevo (Embrapa).  # REVISAR AGRÔNOMO
+  enxurrada:
+    plano: "A água da chuva quase não corre: o risco de enxurrada é baixo, mas pode empoçar."
+    suave ondulado: "Risco de enxurrada baixo a moderado: plantar em nível já segura a água."
+    ondulado: "Risco de enxurrada moderado: plante em nível e mantenha palha no chão."
+    forte ondulado: "Risco de enxurrada alto: cordões de pedra ou de capim e palha no chão fazem diferença."
+    montanhoso: "Risco de enxurrada muito alto: lavoura anual aqui perde solo a cada chuva forte."
+    escarpado: "Terreno para mata ou pasto nativo, não para lavoura."
+
 lentes:
   - id: chuva
     nome: "Chuva"

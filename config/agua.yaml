@@ -1,0 +1,53 @@
+# Água no solo e na lavoura: "quantos dias a terra segura a lavoura" e "água no solo hoje".
+#
+# FONTE (método): Allen et al. (1998), FAO-56. TAW = CAD x Zr (eq. 82); RAW = p x TAW (eq. 83);
+#   ETc = Kc x ET0; ET0 por Hargreaves (eq. 52) com Ra pela latitude e dia do ano (eq. 21).
+# Dias que a lavoura aguenta sem chuva = RAW / ETc na fase crítica (fase média = floração e
+#   enchimento de grão). É a conta do turno de rega: depois disso a planta começa a sofrer (Ks < 1).
+# CAD (mm de água por metro de solo) vem de config/aptidao.yaml (cad_mm_por_m, pela textura).
+
+# Parâmetros por cultura (FAO-56, tabelas 11, 12 e 22; e CLAUDE.md seção 6). Todos # CONFERIR.
+culturas:
+  milho_sertanejo:
+    fases_dias: [20, 35, 40, 30]   # inicial, desenvolvimento, média, final  # CONFERIR
+    kc: [0.30, 1.20, 0.50]         # inicial, média, final                    # CONFERIR
+    zr_m: 1.0                       # profundidade da raiz                     # CONFERIR
+    p: 0.55                         # fração da água que a planta tira sem sofrer  # CONFERIR
+  feijao_caupi:
+    fases_dias: [15, 25, 25, 10]   # CONFERIR
+    kc: [0.40, 1.05, 0.50]         # CONFERIR
+    zr_m: 0.6                       # CONFERIR
+    p: 0.45                         # CONFERIR
+  sorgo_forrageiro:
+    fases_dias: [20, 35, 40, 30]   # CONFERIR
+    kc: [0.30, 1.05, 0.55]         # CONFERIR
+    zr_m: 1.2                       # CONFERIR
+    p: 0.55                         # CONFERIR
+  capim_buffel:
+    # perene: FAO-56 "pastagem extensiva" (Kc 0,30/0,75/0,75; p 0,6). Raiz funda do buffel.
+    fases_dias: [30, 30, 60, 0]    # REVISAR AGRÔNOMO: só para achar a época de maior consumo
+    kc: [0.30, 0.75, 0.75]         # REVISAR AGRÔNOMO
+    zr_m: 1.0                       # REVISAR AGRÔNOMO
+    p: 0.60                         # REVISAR AGRÔNOMO
+  palma_forrageira:
+    # Planta CAM: guarda água na raquete e fecha os poros de dia. A conta do turno de rega não vale.
+    reserva_na_planta: true         # REVISAR AGRÔNOMO
+
+# Balanço hídrico do solo nu (sem lavoura), para a "água no solo hoje".
+balanco:
+  kc_solo_nu: 0.30            # CLAUDE.md seção 5.2  # CONFERIR
+  p_solo_nu: 0.50             # CONFERIR
+  referencia: [1991, 2020]    # anos do "normal para esta data"
+  # Para plantar, a camada da raiz precisa estar sem falta de água: depleção até a RAW da cultura.
+  # "Faltam X mm" = depleção de hoje - RAW (se positiva).  # REVISAR AGRÔNOMO
+
+# Insights das lentes (página Satélite)
+lentes:
+  verde:
+    ndvi_vegetacao_seca: 0.30   # NDVI abaixo disso: vegetação seca ou solo à mostra  # CONFERIR
+    anos_climatologia: 5        # anos usados para os meses de vegetação seca
+  calor:
+    limite_c: 40.0              # superfície acima disso na floração  # CONFERIR
+    cultura_referencia: milho_sertanejo
+  chuva:
+    anos_comparacao: 25

@@ -258,6 +258,21 @@ seções 1.4 a 1.8). Detalhes em [features/03-perfil-do-local.md](features/03-pe
 
 ---
 
+### Água da roça e frase das lentes (Feature 7)
+
+- **Dias que a terra segura a lavoura:** RAW / ETc na floração (FAO-56), com a textura do solo, a raiz da
+  cultura e a ET0 de Hargreaves da temperatura do NASA POWER. Aparece no aviso, ao lado do veranico típico, e
+  no ranking.
+- **Água no solo hoje:** balanço diário do solo nu com a chuva e a ET0 do NASA POWER. Mostra quantos mm faltam
+  para plantar.
+- **Satélite:** cada lente termina com "Na sua roça": uma frase com o número do ponto, lido da cor do pixel do
+  GIBS pela legenda oficial, e o link para onde ele é usado.
+- **Prioridades:** Produção de grãos, Forragem, Estabilidade, Renda e Equilíbrio. A renda usa preços fixos do
+  modelo.
+- Detalhes em [features/07-agua-e-insights.md](features/07-agua-e-insights.md).
+
+---
+
 ## 8. Como mexer
 
 | Quero... | Faça |
@@ -272,6 +287,9 @@ seções 1.4 a 1.8). Detalhes em [features/03-perfil-do-local.md](features/03-pe
 | Forçar nova leitura do catálogo do GIBS | apague o XML do dia em `data/bronze/gibs/` |
 | Ajustar exigências das culturas e graus de limitação | `config/aptidao.yaml` (linhas `# REVISAR AGRÔNOMO`) |
 | Apagar a análise de campo de um local | botão "Apagar análise salva" na Início, ou o JSON em `data/campo/` |
+| Mudar a régua da quebra de safra | `config/colheita.yaml` (vale para o aviso e o ranking) |
+| Ajustar Kc, raiz (Zr) e p das culturas | `config/agua.yaml` (`# CONFERIR`) |
+| Forçar nova leitura de um valor de lente | apague o PNG em `data/bronze/gibs_pixels/<camada>/` |
 
 Comandos:
 

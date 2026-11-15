@@ -39,12 +39,16 @@ class TrafficLightLevel(StrEnum):
 
 
 class BalancePriority(StrEnum):
-    """Prioridade escolhida pelo agricultor na Balança Comida x Forragem x Risco."""
+    """O que pesa mais no plano do produtor: grãos, forragem, estabilidade ou renda.
+
+    Os valores antigos ("comida", "escudo") ficam para não quebrar escolhas guardadas.
+    """
 
     EQUILIBRADO = "equilibrado"
-    COMIDA = "comida"
+    COMIDA = "comida"  # produção de grãos
     FORRAGEM = "forragem"
-    ESCUDO = "escudo"
+    ESCUDO = "escudo"  # estabilidade: colher todo ano
+    RENDA = "renda"
 
 
 class SoilHealthState(int, Enum):
