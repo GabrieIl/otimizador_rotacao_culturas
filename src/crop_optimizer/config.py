@@ -15,6 +15,35 @@ def _default_project_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
+def load_env_file(path: Path | None = None) -> list[str]:
+    """Carrega KEY=valor do .env da raiz para os.environ, sem sobrescrever o que já está definido.
+
+    Aceita valor com ou sem aspas, ignora linhas vazias e comentários. Devolve as chaves carregadas.
+    """
+    if path is None and os.getenv("CROP_OPT_LOAD_DOTENV", "1") == "0":
+        return []  # testes: nunca usar as chaves reais
+    env_path = path or _default_project_root() / ".env"
+    if not env_path.is_file():
+        return []
+    loaded = []
+    for raw in env_path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip().removeprefix("export ").strip()
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+            value = value[1:-1]
+        if key and key not in os.environ:
+            os.environ[key] = value
+            loaded.append(key)
+    return loaded
+
+
+load_env_file()
+
+
 def config_dir() -> Path:
     """Diretório dos parâmetros agronômicos em YAML (config/ na raiz do projeto)."""
     return Path(os.getenv("CROP_OPT_CONFIG_DIR", _default_project_root() / "config"))
@@ -103,6 +132,8 @@ class Settings(BaseModel):
     twilio_whatsapp_from: str = Field(
         default_factory=lambda: os.getenv("TWILIO_WHATSAPP_FROM", "whatsapp:+14155238886")
     )
+    # URL pública da API (túnel cloudflared): o Twilio baixa o áudio da resposta e assina o webhook com ela
+    public_url: str | None = Field(default_factory=lambda: (os.getenv("ACAUA_PUBLIC_URL") or "").rstrip("/") or None)
     default_n_scenarios: int = 10_000
     default_horizon_years: int = 5
     random_seed: int = 42

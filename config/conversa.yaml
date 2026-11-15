@@ -1,0 +1,86 @@
+# Agente de conversa (WhatsApp e tela Conversa): textos e rótulos usados pelas ferramentas.
+# Nenhum parâmetro agronômico aqui: os números vêm do motor (config/chuva.yaml, zarc.yaml, aptidao.yaml).
+# Nomes das culturas: config/aptidao.yaml. Palavras do aviso: analytics/crop_advice.py (as mesmas da página).
+
+# Estado da janela oficial do ZARC em palavras.
+janela_zarc:
+  aberta: "aberta"
+  ainda_nao_abriu: "ainda não abriu"
+  fechou: "já fechou"
+  sem_indicacao: "sem indicação oficial"
+
+# Rotação que representa o jeito de plantar de hoje (comparação do placar).
+rotacao_atual: "so_milho_tradicional"
+
+avisos:
+  risco_exemplo: >-
+    O risco de quebra por cultura usa o clima de exemplo de {exemplo} (perfis fixos, não é a chuva
+    medida); a chuva, o veranico e a janela oficial são dados reais.
+  placar_exemplo: >-
+    DADOS DE EXEMPLO: o placar das rotações roda 10.000 cenários com o clima de exemplo de {exemplo}.
+    Só o atraso e o veranico vêm da chuva real.
+  roca_longe: "A roça fica a {km} km de {exemplo}, o município de exemplo mais perto."
+
+fechamento: "Isso é o que o clima mostra. Confirme com o técnico antes de decidir."
+
+# Modelos da OpenAI (nomes conferidos na lista de modelos da conta em 15/11/2026).
+# Padrão da equipe: sempre o modelo mais barato. Preços oficiais (15/11/2026, por 1M de tokens, entrada/saída):
+#   gpt-5-nano US$ 0,05/0,40 (padrão) | gpt-5.4-nano 0,20/1,25 (mais rápido e direto) | gpt-5.4-mini 0,75/4,50
+#   transcrição: gpt-4o-mini-transcribe US$ 0,003/min (padrão) | gpt-4o-transcribe 0,006/min
+openai:
+  modelo_agente: "gpt-5-nano"
+  esforco_agente: "low"          # "minimal" testado em 15/11: não chama as ferramentas, não serve
+  verbosidade: "low"             # respostas curtas (text.verbosity da OpenAI), sem cortar o raciocínio
+  max_tokens_resposta: 2000      # inclui o raciocínio (o gpt-5-nano chega a ~850 numa resposta)
+  max_rodadas_ferramenta: 4      # chamadas de ferramenta por mensagem
+  tentativas_correcao: 1         # se a resposta quebrar uma regra (%, número sem fonte), pede para reescrever
+  timeout_segundos: 40
+  modelo_transcricao: "gpt-4o-mini-transcribe"
+  modelo_voz: "gpt-4o-mini-tts"  # só quando voz.provedor = openai (~US$ 0,015 por minuto de fala)
+  voz: "ash"
+  instrucoes_voz: "Fale em português do Brasil, com sotaque nordestino suave, devagar e claro, como no rádio."
+
+# Voz da resposta. gtts = grátis (Google Tradutor, sem sotaque regional); openai = gpt-4o-mini-tts (pago, mais
+# natural). Se o escolhido falhar, tenta o outro.
+voz:
+  provedor: "gtts"
+
+sessao:
+  max_mensagens_historico: 8     # últimas mensagens (pergunta e resposta) enviadas ao modelo
+  expira_dias: 30                # depois disso a conversa recomeça (o local fica guardado)
+
+# Regras de reserva (sem a OpenAI): palavras que indicam a pergunta e a cultura.
+regras:
+  placar: ["aguenta", "rotação", "rotacao", "combinação", "combinacao", "placar", "ranking", "qual roça", "qual roca", "plano", "rende"]
+  plantio: ["plant", "semea", "semei", "chuva", "já dá", "ja da", "posso"]
+  culturas:
+    milho_sertanejo: ["milho", "mio"]
+    feijao_caupi: ["feijão", "feijao", "caupi", "macassar", "de corda"]
+    sorgo_forrageiro: ["sorgo"]
+    palma_forrageira: ["palma"]
+    capim_buffel: ["buffel", "bufel", "capim"]
+  prioridades:
+    graos: ["comida", "comer", "mesa", "família", "familia", "grão", "grao"]
+    forragem: ["rebanho", "gado", "bode", "cabra", "ovelha", "criação", "criacao", "forragem", "pasto"]
+    estabilidade: ["segur", "perder", "perda", "risco", "estável", "estavel", "todo ano"]
+    renda: ["renda", "dinheiro", "lucro", "vender", "ganhar"]
+
+audio:
+  max_bytes_recebido: 2000000    # ~2 MB: uns 2 minutos de mensagem de voz do WhatsApp
+
+whatsapp:
+  responder_com_audio: true      # manda também a resposta falada (o público nem sempre lê)
+  mostrar_transcricao: true      # começa a resposta com o que foi entendido do áudio
+  aviso_processando_audio: "Recebi o seu áudio. Já te respondo."
+  boas_vindas: >-
+    Oi, eu sou o Acauã. Respondo duas perguntas sobre a sua roça: se já dá para plantar e qual roça aguenta
+    mais. Pode mandar áudio, texto ou a localização. Aviso: os áudios e as perguntas passam por um serviço da
+    OpenAI para serem entendidos, e o Acauã não guarda o seu número.
+  roca_anotada: "Anotei a roça em {nome}. Agora pode perguntar, por exemplo: posso plantar milho? ou qual roça aguenta mais?"
+  nao_ouvi: "Não consegui ouvir o seu áudio. Pode mandar de novo ou escrever a pergunta?"
+  midia_nao_suportada: "Por enquanto eu entendo texto, áudio e localização."
+  erro: "Tive um problema para responder agora. Tente de novo daqui a pouco."
+
+# "O que plantar hoje?" (agente/recomendacao.py): só classifica para que serve cada cultura.
+recomendacao:
+  forragem_minima_t_ha: 5.0      # com pelo menos isto de forragem no motor (domain/presets.py), conta como forragem

@@ -85,8 +85,9 @@ class TwilioWhatsAppClient:
         payload: dict[str, str] = {
             "From": self.from_number,
             "To": formatted_to,
-            "Body": body,
         }
+        if body:  # mensagem só de mídia (áudio) vai sem texto
+            payload["Body"] = body
         if media_url:
             payload["MediaUrl"] = media_url
 

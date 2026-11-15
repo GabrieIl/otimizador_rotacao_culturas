@@ -321,3 +321,58 @@ ruff check src tests scripts                                # lint
 - O critério de "chuva firme" veio da África Ocidental e ainda não foi calibrado para o semiárido brasileiro.
 - O modelo não vê fertilidade, pragas, preço, mão de obra nem a chuva do próximo mês. A previsão sazonal
   não faz parte do cálculo.
+
+---
+
+## 11. Conversa: o chatbot do Acauã
+
+Detalhes em [features/08-chatbot.md](features/08-chatbot.md).
+
+A página **Conversa** responde por **texto ou áudio**, com os dados do **local selecionado no app** (a roça do
+mapa ou o município de exemplo) e na data simulada da Plantio. O mesmo chatbot roda no terminal
+(`crop-opt conversa`) e vai para o Telegram na próxima etapa.
+
+### 11.1 O que o chatbot recebe antes da pergunta
+1. **Prompt inicial** (`agente/prompt.py`): o que é o Acauã, para que serve, que dados ele coleta (o que é real e o
+   que é exemplo), o que ele não vê e como responder.
+2. **Dados do local selecionado** (`agente/contexto.py`): aviso de cada cultura com chuva, janela oficial e água;
+   ranking das rotações no padrão da página (5 anos, equilíbrio); solo. São as mesmas contas da Plantio.
+3. As últimas mensagens e a pergunta (o áudio é transcrito pela OpenAI antes).
+
+Para "o que planto hoje?", o chatbot aconselha **uma ação** a partir de uma ordem calculada no código
+(`agente/recomendacao.py`): aviso de hoje, janela aberta ou que abre primeiro, menor quebra de safra, quanto aguenta
+sem chuva e solo; separada para grãos e para forragem, ou só para o que a pessoa pediu. Culturas com "Não plante" ou
+"Fora da janela" vão para "evitar".
+
+Para outra cultura, horizonte, prioridade ou data, o modelo (OpenAI, function calling) chama as **ferramentas**
+(`situacao_plantio`, `placar_rotacoes`, `solo_da_roca`, `definir_roca`). O código confere a resposta (sem %, só
+números dos dados, aviso não suavizado) e, se pedido, gera o áudio (gTTS, grátis; a voz da OpenAI é opção).
+
+### 11.2 O que é real e o que é exemplo na resposta
+
+| Parte da resposta | Fonte | Situação |
+|---|---|---|
+| Aviso por cultura, chuva da safra, janela do ZARC, água da roça | mesmas funções da página Plantio | **Real** (o risco simulado dentro do aviso usa clima de exemplo) |
+| Quebra de safra por cultura e ranking das rotações | Monte Carlo da página | **Clima de exemplo**: a resposta sempre avisa |
+| O que a pessoa disse no áudio | transcrição da OpenAI | pode errar: o texto transcrito aparece no chat |
+| Texto da resposta | modelo da OpenAI | conferido pelo código; sem a OpenAI, sai pelas regras com os mesmos números |
+
+### 11.3 Como mexer
+
+| Quero... | Faça |
+|---|---|
+| Conversar sem abrir o app | `.venv/bin/crop-opt conversa` (modo interativo) ou `crop-opt conversa "pergunta" --data 2026-03-01` |
+| Testar uma pergunta em áudio | `crop-opt conversa --audio arquivo.ogg` |
+| Mudar o que o chatbot sabe sobre o app ou como ele responde | `src/crop_optimizer/agente/prompt.py` |
+| Mudar os dados do local entregues antes da pergunta | `src/crop_optimizer/agente/contexto.py` |
+| Mudar o critério de "o que plantar hoje" | `src/crop_optimizer/agente/recomendacao.py` (critério no topo do arquivo) |
+| Mudar o que é conferido na resposta | `src/crop_optimizer/agente/guardas.py` |
+| Trocar modelo, voz ou esforço | `config/conversa.yaml`, seções `openai` e `voz` (padrão da equipe: sempre o mais barato; hoje `gpt-5-nano`, `gpt-4o-mini-transcribe` e gTTS) |
+| Ensinar uma palavra às regras de reserva | `config/conversa.yaml`, seção `regras` |
+
+Chave no `.env` da raiz (fora do git): `OPENAI_API_KEY`. O app lê o `.env` sozinho; os testes nunca leem.
+
+### 11.4 Limites para dizer em voz alta
+- A pergunta e o áudio passam pela OpenAI (com `store: false`, a conversa não fica guardada lá).
+- Preço do dia, praga, adubo, crédito e previsão do tempo ficam de fora: o chatbot diz que não sabe.
+- O WhatsApp pelo Twilio ficou pronto no código, mas a conta gratuita não deixa configurar o webhook. Está parado.

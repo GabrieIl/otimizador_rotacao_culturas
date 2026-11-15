@@ -4,24 +4,25 @@ from __future__ import annotations
 
 import base64
 import re
-from html import escape
 
 from starlette.applications import Starlette
+from starlette.background import BackgroundTask
 from starlette.requests import Request
-from starlette.responses import JSONResponse, Response
+from starlette.responses import FileResponse, JSONResponse, Response
 from starlette.routing import Route
 
 from crop_optimizer.accessibility import (
-    build_whatsapp_summary_message,
     compose_radio_script,
     create_tts_provider,
     generate_one_pager_pdf,
 )
+from crop_optimizer.agente.voz import audio_dir
 from crop_optimizer.analytics import (
     build_planting_window_risk_matrix,
     build_survival_scoreboard_frame,
     classify_traffic_light,
 )
+from crop_optimizer.canais.whatsapp import MensagemWhatsApp, WhatsAppService, twiml
 from crop_optimizer.config import Settings, get_settings
 from crop_optimizer.domain.models import LocationSpec, SimulationConfig, TrafficLightLevel
 from crop_optimizer.domain.presets import DEFAULT_STRATEGIES, location_map
@@ -32,6 +33,8 @@ from crop_optimizer.engine import (
     rank_by_survival,
 )
 from crop_optimizer.lakehouse import LakehouseCatalog
+
+_MEDIA_NAME = re.compile(r"[0-9a-f]{32}\.(ogg|mp3)")
 
 
 def _parse_config(payload: dict[str, object]) -> SimulationConfig:
@@ -80,8 +83,14 @@ def _run_simulation_bundle(
     return location, results, traditional, resilient, traffic_light, stats
 
 
-def create_app(settings: Settings | None = None) -> Starlette:
-    """Fábrica da aplicação HTTP Starlette para integração WhatsApp/Twilio e Back-office."""
+def create_app(
+    settings: Settings | None = None, whatsapp: WhatsAppService | None = None, somente_whatsapp: bool = False
+) -> Starlette:
+    """Fábrica da aplicação HTTP Starlette para integração WhatsApp/Twilio e Back-office.
+
+    `somente_whatsapp=True` deixa só /health, o webhook e /media: é o modo para expor na internet (túnel),
+    porque as outras rotas não têm senha e a do Rádio do Tempo gasta crédito da OpenAI.
+    """
     cfg_settings = settings or get_settings()
 
     async def health(_request: Request) -> JSONResponse:
@@ -158,45 +167,51 @@ def create_app(settings: Settings | None = None) -> Starlette:
             headers={"Content-Disposition": 'attachment; filename="ficha_o_que_nao_sabemos.pdf"'},
         )
 
+    service: dict[str, WhatsAppService] = {}
+
+    def whatsapp_service() -> WhatsAppService:
+        if "svc" not in service:  # criado na primeira mensagem (o resto da API não precisa da OpenAI)
+            service["svc"] = whatsapp or WhatsAppService(cfg_settings)
+        return service["svc"]
+
     async def whatsapp_webhook(request: Request) -> Response:
-        form = await request.form()
-        body = str(form.get("Body", "")).lower()
-        delay_match = re.search(r"(\d{1,2})", body)
-        delay_days = min(40, int(delay_match.group(1))) if delay_match else 14
-
-        loc_id = "petrolina_pe"
-        for candidate in ("quixada", "sousa", "irece", "petrolina"):
-            if candidate in body:
-                loc_id = {
-                    "quixada": "quixada_ce",
-                    "sousa": "sousa_pb",
-                    "irece": "irece_ba",
-                    "petrolina": "petrolina_pe",
-                }[candidate]
-                break
-
-        config = SimulationConfig(location_id=loc_id, safra_delay_days=delay_days, n_scenarios=2_000)
-        location, _results, traditional, resilient, light, _stats = _run_simulation_bundle(
-            cfg_settings,
-            config,
+        """Twilio WhatsApp: responde na hora e atende em segundo plano (texto, áudio ou localização)."""
+        svc = whatsapp_service()
+        params = {k: str(v) for k, v in (await request.form()).items()}
+        path = request.url.path + (f"?{request.url.query}" if request.url.query else "")
+        if not svc.assinatura_ok(path, params, request.headers.get("X-Twilio-Signature")):
+            return Response("assinatura inválida", status_code=403)
+        msg = MensagemWhatsApp.from_form(params)
+        if not svc.nova(msg.sid):
+            return Response(twiml(), media_type="application/xml")
+        return Response(
+            svc.resposta_imediata(msg),
+            media_type="application/xml",
+            background=BackgroundTask(svc.processar, msg),
         )
-        msg = build_whatsapp_summary_message(
-            config.farmer_name,
-            location,
-            delay_days,
-            light,
-            traditional,
-            resilient,
-        )
-        twiml = f'<?xml version="1.0" encoding="UTF-8"?><Response><Message>{escape(msg)}</Message></Response>'
-        return Response(content=twiml, media_type="application/xml")
 
+    async def media(request: Request) -> Response:
+        """Áudio das respostas, para o Twilio baixar (nome = hash do texto; nada além desta pasta)."""
+        name = request.path_params["name"]
+        if not _MEDIA_NAME.fullmatch(name):
+            return Response(status_code=404)
+        path = audio_dir(cfg_settings) / name
+        if not path.is_file():
+            return Response(status_code=404)
+        return FileResponse(path, media_type="audio/ogg" if name.endswith(".ogg") else "audio/mpeg")
+
+    whatsapp_routes = [
+        Route("/health", health, methods=["GET"]),
+        Route("/api/v1/whatsapp/webhook", whatsapp_webhook, methods=["POST"]),
+        Route("/media/{name}", media, methods=["GET"]),
+    ]
+    if somente_whatsapp:
+        return Starlette(routes=whatsapp_routes)
     return Starlette(
         routes=[
-            Route("/health", health, methods=["GET"]),
+            *whatsapp_routes,
             Route("/api/v1/simulate", simulate, methods=["POST"]),
             Route("/api/v1/radio-do-tempo", radio_do_tempo, methods=["POST"]),
             Route("/api/v1/ficha-tecnica.pdf", ficha_pdf, methods=["POST"]),
-            Route("/api/v1/whatsapp/webhook", whatsapp_webhook, methods=["POST"]),
         ]
     )
