@@ -160,6 +160,215 @@ culturas:
     agua: baixa           # REVISAR AGRÔNOMO
     erosao_reduz_graus: 1  # REVISAR AGRÔNOMO: perene
 
+  feijao_comum:
+    nome: "Feijão"
+    # FAO Ecocrop (Phaseolus vulgaris), de memória: REVISAR AGRÔNOMO
+    ph_otimo: [5.5, 6.8]   # REVISAR AGRÔNOMO
+    ph_absoluto: [4.2, 8.7]  # REVISAR AGRÔNOMO
+    nitrogenio: nula     # REVISAR AGRÔNOMO
+    fosforo: alta       # REVISAR AGRÔNOMO
+    potassio: media      # REVISAR AGRÔNOMO
+    agua: alta          # REVISAR AGRÔNOMO
+    erosao_reduz_graus: 0  # REVISAR AGRÔNOMO
+
+  fava:
+    nome: "Fava"
+    # FAO Ecocrop (Phaseolus lunatus), de memória: REVISAR AGRÔNOMO
+    ph_otimo: [6.0, 7.0]   # REVISAR AGRÔNOMO
+    ph_absoluto: [4.5, 8.0]  # REVISAR AGRÔNOMO
+    nitrogenio: nula     # REVISAR AGRÔNOMO
+    fosforo: media       # REVISAR AGRÔNOMO
+    potassio: media      # REVISAR AGRÔNOMO
+    agua: media          # REVISAR AGRÔNOMO
+    erosao_reduz_graus: 0  # REVISAR AGRÔNOMO
+
+  mandioca:
+    nome: "Mandioca"
+    # FAO Ecocrop (Manihot esculenta), de memória: REVISAR AGRÔNOMO
+    ph_otimo: [5.5, 7.5]   # REVISAR AGRÔNOMO
+    ph_absoluto: [4.0, 8.5]  # REVISAR AGRÔNOMO
+    nitrogenio: baixa     # REVISAR AGRÔNOMO
+    fosforo: media       # REVISAR AGRÔNOMO
+    potassio: alta      # REVISAR AGRÔNOMO
+    agua: baixa          # REVISAR AGRÔNOMO
+    erosao_reduz_graus: 0  # REVISAR AGRÔNOMO
+
+  batata_doce:
+    nome: "Batata-doce"
+    # FAO Ecocrop (Ipomoea batatas), de memória: REVISAR AGRÔNOMO
+    ph_otimo: [5.5, 7.0]   # REVISAR AGRÔNOMO
+    ph_absoluto: [4.5, 8.5]  # REVISAR AGRÔNOMO
+    nitrogenio: baixa     # REVISAR AGRÔNOMO
+    fosforo: media       # REVISAR AGRÔNOMO
+    potassio: alta      # REVISAR AGRÔNOMO
+    agua: media          # REVISAR AGRÔNOMO
+    erosao_reduz_graus: 0  # REVISAR AGRÔNOMO
+
+  cenoura:
+    nome: "Cenoura"
+    # FAO Ecocrop (Daucus carota), de memória: REVISAR AGRÔNOMO
+    ph_otimo: [6.0, 7.0]   # REVISAR AGRÔNOMO
+    ph_absoluto: [4.5, 8.5]  # REVISAR AGRÔNOMO
+    nitrogenio: media     # REVISAR AGRÔNOMO
+    fosforo: alta       # REVISAR AGRÔNOMO
+    potassio: alta      # REVISAR AGRÔNOMO
+    agua: alta          # REVISAR AGRÔNOMO
+    erosao_reduz_graus: 0  # REVISAR AGRÔNOMO
+
+  alface:
+    nome: "Alface"
+    # FAO Ecocrop (Lactuca sativa), de memória: REVISAR AGRÔNOMO
+    ph_otimo: [6.0, 7.0]   # REVISAR AGRÔNOMO
+    ph_absoluto: [5.0, 8.0]  # REVISAR AGRÔNOMO
+    nitrogenio: alta     # REVISAR AGRÔNOMO
+    fosforo: alta       # REVISAR AGRÔNOMO
+    potassio: media      # REVISAR AGRÔNOMO
+    agua: alta          # REVISAR AGRÔNOMO
+    erosao_reduz_graus: 0  # REVISAR AGRÔNOMO
+
+  rucula:
+    nome: "Rúcula"
+    # FAO Ecocrop (Eruca sativa), de memória: REVISAR AGRÔNOMO
+    ph_otimo: [6.0, 7.0]   # REVISAR AGRÔNOMO
+    ph_absoluto: [5.0, 8.0]  # REVISAR AGRÔNOMO
+    nitrogenio: alta     # REVISAR AGRÔNOMO
+    fosforo: media       # REVISAR AGRÔNOMO
+    potassio: media      # REVISAR AGRÔNOMO
+    agua: alta          # REVISAR AGRÔNOMO
+    erosao_reduz_graus: 0  # REVISAR AGRÔNOMO
+
+  coentro:
+    nome: "Coentro"
+    # FAO Ecocrop (Coriandrum sativum), de memória: REVISAR AGRÔNOMO
+    ph_otimo: [6.0, 7.5]   # REVISAR AGRÔNOMO
+    ph_absoluto: [5.0, 8.0]  # REVISAR AGRÔNOMO
+    nitrogenio: media     # REVISAR AGRÔNOMO
+    fosforo: media       # REVISAR AGRÔNOMO
+    potassio: media      # REVISAR AGRÔNOMO
+    agua: alta          # REVISAR AGRÔNOMO
+    erosao_reduz_graus: 0  # REVISAR AGRÔNOMO
+
+  cebolinha:
+    nome: "Cebolinha"
+    # FAO Ecocrop (Allium fistulosum), de memória: REVISAR AGRÔNOMO
+    ph_otimo: [6.0, 7.0]   # REVISAR AGRÔNOMO
+    ph_absoluto: [5.0, 8.0]  # REVISAR AGRÔNOMO
+    nitrogenio: media     # REVISAR AGRÔNOMO
+    fosforo: media       # REVISAR AGRÔNOMO
+    potassio: media      # REVISAR AGRÔNOMO
+    agua: alta          # REVISAR AGRÔNOMO
+    erosao_reduz_graus: 0  # REVISAR AGRÔNOMO
+
+  espinafre:
+    nome: "Espinafre"
+    # FAO Ecocrop (Spinacia oleracea), de memória: REVISAR AGRÔNOMO
+    ph_otimo: [6.5, 7.5]   # REVISAR AGRÔNOMO
+    ph_absoluto: [5.5, 8.0]  # REVISAR AGRÔNOMO
+    nitrogenio: alta     # REVISAR AGRÔNOMO
+    fosforo: media       # REVISAR AGRÔNOMO
+    potassio: media      # REVISAR AGRÔNOMO
+    agua: alta          # REVISAR AGRÔNOMO
+    erosao_reduz_graus: 0  # REVISAR AGRÔNOMO
+
+  rabanete:
+    nome: "Rabanete"
+    # FAO Ecocrop (Raphanus sativus), de memória: REVISAR AGRÔNOMO
+    ph_otimo: [6.0, 7.0]   # REVISAR AGRÔNOMO
+    ph_absoluto: [5.0, 8.0]  # REVISAR AGRÔNOMO
+    nitrogenio: media     # REVISAR AGRÔNOMO
+    fosforo: media       # REVISAR AGRÔNOMO
+    potassio: media      # REVISAR AGRÔNOMO
+    agua: alta          # REVISAR AGRÔNOMO
+    erosao_reduz_graus: 0  # REVISAR AGRÔNOMO
+
+  tomate:
+    nome: "Tomate"
+    # FAO Ecocrop (Solanum lycopersicum), de memória: REVISAR AGRÔNOMO
+    ph_otimo: [5.5, 6.8]   # REVISAR AGRÔNOMO
+    ph_absoluto: [4.3, 8.7]  # REVISAR AGRÔNOMO
+    nitrogenio: alta     # REVISAR AGRÔNOMO
+    fosforo: alta       # REVISAR AGRÔNOMO
+    potassio: alta      # REVISAR AGRÔNOMO
+    agua: alta          # REVISAR AGRÔNOMO
+    erosao_reduz_graus: 0  # REVISAR AGRÔNOMO
+
+  pimentao:
+    nome: "Pimentão"
+    # FAO Ecocrop (Capsicum annuum), de memória: REVISAR AGRÔNOMO
+    ph_otimo: [5.5, 7.0]   # REVISAR AGRÔNOMO
+    ph_absoluto: [4.3, 8.7]  # REVISAR AGRÔNOMO
+    nitrogenio: alta     # REVISAR AGRÔNOMO
+    fosforo: alta       # REVISAR AGRÔNOMO
+    potassio: alta      # REVISAR AGRÔNOMO
+    agua: alta          # REVISAR AGRÔNOMO
+    erosao_reduz_graus: 0  # REVISAR AGRÔNOMO
+
+  pimenta:
+    nome: "Pimenta"
+    # FAO Ecocrop (Capsicum spp.), de memória: REVISAR AGRÔNOMO
+    ph_otimo: [5.5, 7.0]   # REVISAR AGRÔNOMO
+    ph_absoluto: [4.3, 8.7]  # REVISAR AGRÔNOMO
+    nitrogenio: media     # REVISAR AGRÔNOMO
+    fosforo: media       # REVISAR AGRÔNOMO
+    potassio: media      # REVISAR AGRÔNOMO
+    agua: media          # REVISAR AGRÔNOMO
+    erosao_reduz_graus: 0  # REVISAR AGRÔNOMO
+
+  morango:
+    nome: "Morango"
+    # FAO Ecocrop (Fragaria x ananassa), de memória: REVISAR AGRÔNOMO
+    ph_otimo: [5.5, 6.5]   # REVISAR AGRÔNOMO
+    ph_absoluto: [4.5, 8.0]  # REVISAR AGRÔNOMO
+    nitrogenio: media     # REVISAR AGRÔNOMO
+    fosforo: alta       # REVISAR AGRÔNOMO
+    potassio: alta      # REVISAR AGRÔNOMO
+    agua: alta          # REVISAR AGRÔNOMO
+    erosao_reduz_graus: 0  # REVISAR AGRÔNOMO
+
+  maracuja:
+    nome: "Maracujá"
+    # FAO Ecocrop (Passiflora edulis), de memória: REVISAR AGRÔNOMO
+    ph_otimo: [5.5, 7.0]   # REVISAR AGRÔNOMO
+    ph_absoluto: [5.0, 8.0]  # REVISAR AGRÔNOMO
+    nitrogenio: media     # REVISAR AGRÔNOMO
+    fosforo: alta       # REVISAR AGRÔNOMO
+    potassio: alta      # REVISAR AGRÔNOMO
+    agua: alta          # REVISAR AGRÔNOMO
+    erosao_reduz_graus: 1  # REVISAR AGRÔNOMO
+
+  mamao:
+    nome: "Mamão"
+    # FAO Ecocrop (Carica papaya), de memória: REVISAR AGRÔNOMO
+    ph_otimo: [5.5, 7.0]   # REVISAR AGRÔNOMO
+    ph_absoluto: [4.5, 8.0]  # REVISAR AGRÔNOMO
+    nitrogenio: alta     # REVISAR AGRÔNOMO
+    fosforo: alta       # REVISAR AGRÔNOMO
+    potassio: alta      # REVISAR AGRÔNOMO
+    agua: alta          # REVISAR AGRÔNOMO
+    erosao_reduz_graus: 1  # REVISAR AGRÔNOMO
+
+  banana:
+    nome: "Banana"
+    # FAO Ecocrop (Musa spp.), de memória: REVISAR AGRÔNOMO
+    ph_otimo: [5.5, 7.5]   # REVISAR AGRÔNOMO
+    ph_absoluto: [4.5, 8.0]  # REVISAR AGRÔNOMO
+    nitrogenio: alta     # REVISAR AGRÔNOMO
+    fosforo: media       # REVISAR AGRÔNOMO
+    potassio: alta      # REVISAR AGRÔNOMO
+    agua: alta          # REVISAR AGRÔNOMO
+    erosao_reduz_graus: 1  # REVISAR AGRÔNOMO
+
+  limao:
+    nome: "Limão taiti"
+    # FAO Ecocrop (Citrus latifolia), de memória: REVISAR AGRÔNOMO
+    ph_otimo: [5.5, 7.0]   # REVISAR AGRÔNOMO
+    ph_absoluto: [4.5, 8.0]  # REVISAR AGRÔNOMO
+    nitrogenio: media     # REVISAR AGRÔNOMO
+    fosforo: media       # REVISAR AGRÔNOMO
+    potassio: media      # REVISAR AGRÔNOMO
+    agua: media          # REVISAR AGRÔNOMO
+    erosao_reduz_graus: 1  # REVISAR AGRÔNOMO
+
 # pH fora do ótimo, mas dentro do absoluto: grau conforme a distância até o ótimo
 # REVISAR AGRÔNOMO
 ph_graus_fora_otimo:
@@ -224,6 +433,25 @@ bases_por_cultura:
   sorgo_forrageiro: baixa
   palma_forrageira: alta   # cartilha UFV: exigente em Ca e Mg
   capim_buffel: baixa
+  feijao_comum: media   # REVISAR AGRÔNOMO
+  fava: media   # REVISAR AGRÔNOMO
+  mandioca: baixa   # REVISAR AGRÔNOMO
+  batata_doce: media   # REVISAR AGRÔNOMO
+  cenoura: media   # REVISAR AGRÔNOMO
+  alface: alta   # REVISAR AGRÔNOMO
+  rucula: media   # REVISAR AGRÔNOMO
+  coentro: media   # REVISAR AGRÔNOMO
+  cebolinha: media   # REVISAR AGRÔNOMO
+  espinafre: alta   # REVISAR AGRÔNOMO
+  rabanete: media   # REVISAR AGRÔNOMO
+  tomate: alta   # REVISAR AGRÔNOMO
+  pimentao: alta   # REVISAR AGRÔNOMO
+  pimenta: media   # REVISAR AGRÔNOMO
+  morango: alta   # REVISAR AGRÔNOMO
+  maracuja: media   # REVISAR AGRÔNOMO
+  mamao: media   # REVISAR AGRÔNOMO
+  banana: media   # REVISAR AGRÔNOMO
+  limao: media   # REVISAR AGRÔNOMO
 
 # Descrição curta de cada cultura para o card em destaque (página Início).
 # REVISAR AGRÔNOMO: textos escritos pela equipe a partir das exigências acima.
@@ -242,3 +470,41 @@ descricao_culturas:
     encharcado e pede potássio, cálcio e magnésio.
   capim_buffel: >-
     Capim perene muito resistente à seca, usado como pasto no semiárido. Aguenta solo pobre.
+  feijao_comum: >-
+    Leguminosa de ciclo curto (70-90 dias). Fixa parte do nitrogênio, mas sente mais a seca e o calor na floração que o caupi. Vai bem em consórcio com o milho.
+  fava: >-
+    Leguminosa rústica, de ciclo mais longo que o feijão. Fixa nitrogênio e aguenta melhor o calor; tradicional em consórcio no Nordeste.
+  mandioca: >-
+    Raiz muito rústica: perde folha na seca e volta com a chuva. Não precisa ser colhida na hora (fica como reserva na terra). Pede potássio e não gosta de solo encharcado.
+  batata_doce: >-
+    Rama de ciclo de 4 a 6 meses, rústica e de baixo custo. Prefere solo leve e solto; tolera seca depois de enraizada.
+  cenoura: >-
+    Raiz de ciclo de 90 a 110 dias. Precisa de solo fofo, sem pedra, e de rega constante para não rachar.
+  alface: >-
+    Folha de ciclo de 40 a 60 dias, raiz rasa. Pede rega diária, matéria orgânica e sombra nas horas mais quentes.
+  rucula: >-
+    Folha de ciclo muito curto (cerca de 30 dias), boa para canteiro intensivo e venda na feira.
+  coentro: >-
+    Tempero de ciclo curto (40 a 60 dias), muito vendido no Nordeste. Tolera calor, mas precisa de rega.
+  cebolinha: >-
+    Tempero que rebrota depois do corte e dá várias colheitas. Raiz rasa: rega frequente.
+  espinafre: >-
+    Folha que prefere clima ameno; no semiárido sofre com o calor. Não tolera solo ácido.
+  rabanete: >-
+    Raiz de ciclo muito curto (cerca de 30 dias). Rega regular para não ficar oco ou rachado.
+  tomate: >-
+    Fruto de alto valor (cereja e grape rendem bem por m²). Exige rega constante, tutoramento e manejo de pragas; muitas vezes com sombrite.
+  pimentao: >-
+    Fruto de alto valor por m², com colheitas por vários meses. Sente falta de água e de cálcio.
+  pimenta: >-
+    Mais rústica que o pimentão e com colheita por meses. Boa para venda e para conserva.
+  morango: >-
+    Fruto de alto valor, mas pede clima ameno: no semiárido só em altitude ou com estrutura. Raiz muito rasa e rega por gotejo.
+  maracuja: >-
+    Trepadeira que começa a produzir em menos de um ano e colhe por vários meses. Precisa de espaldeira e de rega no semiárido.
+  mamao: >-
+    Produz em menos de um ano e colhe o ano inteiro. Não tolera encharcamento; no semiárido, com rega.
+  banana: >-
+    Pouca manutenção depois de estabelecida e colheita o ano todo, mas consome muita água e potássio.
+  limao: >-
+    Árvore de vida longa, colhe o ano todo depois de 2 a 3 anos. Tolera alguma seca, mas produz bem com rega.

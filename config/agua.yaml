@@ -33,6 +33,102 @@ culturas:
     # Planta CAM: guarda água na raquete e fecha os poros de dia. A conta do turno de rega não vale.
     reserva_na_planta: true         # REVISAR AGRÔNOMO
 
+  feijao_comum:  # FAO-56 'Beans, dry'
+    fases_dias: [20, 30, 40, 20]   # CONFERIR
+    kc: [0.4, 1.15, 0.35]         # CONFERIR
+    zr_m: 0.7                       # CONFERIR
+    p: 0.45                          # CONFERIR
+  fava:  # FAO-56 'Beans, dry' (análogo; fava não está na tabela) REVISAR AGRÔNOMO
+    fases_dias: [20, 30, 50, 20]   # CONFERIR
+    kc: [0.4, 1.15, 0.35]         # CONFERIR
+    zr_m: 0.8                       # CONFERIR
+    p: 0.45                          # CONFERIR
+  mandioca:  # FAO-56 'Cassava, year 1'
+    fases_dias: [20, 40, 90, 60]   # CONFERIR
+    kc: [0.3, 0.8, 0.3]         # CONFERIR
+    zr_m: 0.6                       # CONFERIR
+    p: 0.35                          # CONFERIR
+  batata_doce:  # FAO-56 'Sweet potato'
+    fases_dias: [20, 30, 60, 40]   # CONFERIR
+    kc: [0.5, 1.15, 0.65]         # CONFERIR
+    zr_m: 1.0                       # CONFERIR
+    p: 0.65                          # CONFERIR
+  cenoura:  # FAO-56 'Carrots'
+    fases_dias: [20, 30, 40, 20]   # CONFERIR
+    kc: [0.7, 1.05, 0.95]         # CONFERIR
+    zr_m: 0.6                       # CONFERIR
+    p: 0.35                          # CONFERIR
+  alface:  # FAO-56 'Lettuce'
+    fases_dias: [20, 30, 15, 10]   # CONFERIR
+    kc: [0.7, 1.0, 0.95]         # CONFERIR
+    zr_m: 0.3                       # CONFERIR
+    p: 0.3                          # CONFERIR
+  rucula:  # FAO-56 'Lettuce' (análogo) REVISAR AGRÔNOMO
+    fases_dias: [10, 10, 10, 5]   # CONFERIR
+    kc: [0.7, 1.0, 0.95]         # CONFERIR
+    zr_m: 0.3                       # CONFERIR
+    p: 0.3                          # CONFERIR
+  coentro:  # FAO-56 'Small vegetables' (análogo) REVISAR AGRÔNOMO
+    fases_dias: [15, 15, 15, 5]   # CONFERIR
+    kc: [0.7, 1.05, 0.95]         # CONFERIR
+    zr_m: 0.3                       # CONFERIR
+    p: 0.3                          # CONFERIR
+  cebolinha:  # FAO-56 'Onions, green'
+    fases_dias: [25, 30, 10, 5]   # CONFERIR
+    kc: [0.7, 1.0, 1.0]         # CONFERIR
+    zr_m: 0.3                       # CONFERIR
+    p: 0.3                          # CONFERIR
+  espinafre:  # FAO-56 'Spinach'
+    fases_dias: [20, 20, 15, 5]   # CONFERIR
+    kc: [0.7, 1.0, 0.95]         # CONFERIR
+    zr_m: 0.3                       # CONFERIR
+    p: 0.2                          # CONFERIR
+  rabanete:  # FAO-56 'Radishes'
+    fases_dias: [5, 10, 15, 5]   # CONFERIR
+    kc: [0.7, 0.9, 0.85]         # CONFERIR
+    zr_m: 0.3                       # CONFERIR
+    p: 0.3                          # CONFERIR
+  tomate:  # FAO-56 'Tomato'
+    fases_dias: [30, 40, 40, 25]   # CONFERIR
+    kc: [0.6, 1.15, 0.8]         # CONFERIR
+    zr_m: 0.7                       # CONFERIR
+    p: 0.4                          # CONFERIR
+  pimentao:  # FAO-56 'Peppers, sweet'
+    fases_dias: [25, 35, 40, 20]   # CONFERIR
+    kc: [0.6, 1.05, 0.9]         # CONFERIR
+    zr_m: 0.5                       # CONFERIR
+    p: 0.3                          # CONFERIR
+  pimenta:  # FAO-56 'Peppers, sweet' (análogo) REVISAR AGRÔNOMO
+    fases_dias: [25, 35, 40, 20]   # CONFERIR
+    kc: [0.6, 1.05, 0.9]         # CONFERIR
+    zr_m: 0.5                       # CONFERIR
+    p: 0.3                          # CONFERIR
+  morango:  # FAO-56 'Strawberries'; fases REVISAR AGRÔNOMO
+    fases_dias: [30, 40, 60, 30]   # CONFERIR
+    kc: [0.4, 0.85, 0.75]         # CONFERIR
+    zr_m: 0.2                       # CONFERIR
+    p: 0.2                          # CONFERIR
+  maracuja:  # sem valor na FAO-56: REVISAR AGRÔNOMO
+    fases_dias: [60, 90, 120, 95]   # CONFERIR
+    kc: [0.5, 1.0, 0.8]         # CONFERIR
+    zr_m: 0.6                       # CONFERIR
+    p: 0.4                          # CONFERIR
+  mamao:  # sem valor na FAO-56: REVISAR AGRÔNOMO
+    fases_dias: [60, 90, 120, 95]   # CONFERIR
+    kc: [0.6, 1.0, 0.8]         # CONFERIR
+    zr_m: 0.6                       # CONFERIR
+    p: 0.4                          # CONFERIR
+  banana:  # FAO-56 'Banana, 1st year'
+    fases_dias: [120, 90, 120, 60]   # CONFERIR
+    kc: [0.5, 1.1, 1.0]         # CONFERIR
+    zr_m: 0.6                       # CONFERIR
+    p: 0.35                          # CONFERIR
+  limao:  # FAO-56 'Citrus, sem cobertura, 50% de copa'
+    fases_dias: [60, 90, 120, 95]   # CONFERIR
+    kc: [0.65, 0.6, 0.65]         # CONFERIR
+    zr_m: 1.2                       # CONFERIR
+    p: 0.5                          # CONFERIR
+
 # Balanço hídrico do solo nu (sem lavoura), para a "água no solo hoje".
 balanco:
   kc_solo_nu: 0.30            # CLAUDE.md seção 5.2  # CONFERIR

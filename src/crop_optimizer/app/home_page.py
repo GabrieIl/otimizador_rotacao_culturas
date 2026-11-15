@@ -34,6 +34,7 @@ from crop_optimizer.app.common import (
 from crop_optimizer.app.icons import CROP_ICONS
 from crop_optimizer.app.state import arrived, store, stored
 from crop_optimizer.config import load_yaml_config
+from crop_optimizer.domain.crop_registry import crop_info, group_names, ordered_ids
 from crop_optimizer.domain.soil_profile import (
     ATTRIBUTES,
     DEPTH_FIELD,
@@ -251,8 +252,12 @@ def _crop_soil_section(results: list[CropSuitability]) -> None:
     st.header("O solo é bom para quê?", anchor=False)
     st.markdown("O mesmo solo pode ser bom para uma cultura e ruim para outra. **Escolha uma cultura** para ver o porquê.")
     by_id = {c.crop_id: c for c in results}
+    order = {c: i for i, c in enumerate(ordered_ids())}
+    results = sorted(results, key=lambda c: order.get(c.crop_id, 999))
+    groups = group_names()
     items = [{"id": c.crop_id, "name": c.name, "icon": CROP_ICONS[c.crop_id], "status": c.label,
-              "tone": _SUIT_TONE[c.suit_class]} for c in results]
+              "tone": _SUIT_TONE[c.suit_class], "group": groups.get(crop_info(c.crop_id).get("grupo"), "")}
+             for c in results]
     left, right = st.columns([1, 2.2], gap="large")
     with left:
         chosen = stored("cultura", results[0].crop_id)

@@ -28,12 +28,23 @@ _BASE_CSS = """
 .tone-vermelho { background:var(--t-verm); color:var(--verm); }
 .tone-espera, .tone-neutro { background:var(--t-espera); color:var(--pet2); }
 .ico svg { width:100%; height:100%; display:block; }
+.grupo { font-family: 'IBM Plex Mono', monospace; font-size:.66rem; letter-spacing:.08em; text-transform:uppercase;
+  color:var(--sub); margin:.7rem .2rem .25rem .2rem; }
+.grupo:first-child { margin-top:.1rem; }
 button { font-family: Inter, sans-serif; }
 @media (prefers-reduced-motion: no-preference) { .anim { transition: all 160ms ease-out; } }
 """
 
 _JS_HELPERS = """
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function withGroups(items, render) {
+  let last = null;
+  return items.map((it) => {
+    const head = it.group && it.group !== last ? `<p class="grupo">${esc(it.group)}</p>` : '';
+    last = it.group || last;
+    return head + render(it);
+  }).join('');
+}
 function rootOf(parentElement) {
   let root = parentElement.querySelector('.acaua-root');
   if (!root) { root = document.createElement('div'); root.className = 'acaua-root'; parentElement.appendChild(root); }
@@ -64,7 +75,7 @@ def _component(name: str, css: str, js_body: str):
 _CARDS = _component(
     "cards_cultura",
     """
-.lista { display:flex; flex-direction:column; gap:.6rem; }
+.lista { display:flex; flex-direction:column; gap:.5rem; max-height:640px; overflow-y:auto; padding-right:.35rem; }
 .card { display:flex; align-items:center; gap:.85rem; width:100%; text-align:left; cursor:pointer;
   background:rgba(255,255,255,.45); border:1px solid var(--linha); border-radius:.8rem; padding:.7rem .9rem; color:var(--pet); }
 .card:hover { background:rgba(255,255,255,.8); }
@@ -77,10 +88,12 @@ export default function(component) {
   const { data, setStateValue, parentElement } = component;
   const root = rootOf(parentElement);
   const sel = data.selected;
-  root.innerHTML = '<div class="lista">' + data.items.map((it) => `
+  root.innerHTML = '<div class="lista">' + withGroups(data.items, (it) => `
     <button class="card anim ${it.id === sel ? 'sel' : ''}" data-id="${esc(it.id)}" aria-pressed="${it.id === sel}">
       <span class="ico">${it.icon}</span><span class="nome">${esc(it.name)}</span>
-      <span class="pill tone-${esc(it.tone)}">${esc(it.status)}</span></button>`).join('') + '</div>';
+      <span class="pill tone-${esc(it.tone)}">${esc(it.status)}</span></button>`) + '</div>';
+  const selBtn = root.querySelector('.card.sel');
+  if (selBtn) { const lista = root.querySelector('.lista'); lista.scrollTop = Math.max(0, selBtn.offsetTop - lista.offsetTop - 60); }
   root.querySelectorAll('.card').forEach((b) => { b.onclick = () => setStateValue('selected', b.dataset.id); });
 }
 """,
@@ -195,7 +208,8 @@ _COMBO = _component(
 .nome { font-family: Montserrat, Inter, sans-serif; font-weight:700; font-size:1.05rem; flex:1; }
 .seta { width:10px; height:10px; border-right:2px solid var(--pet); border-bottom:2px solid var(--pet); transform: rotate(45deg); margin:0 .3rem .25rem 0; }
 .aberto .seta { transform: rotate(-135deg); margin-bottom:-.2rem; }
-.opcoes { display:none; margin-top:.4rem; background:#fff; border:1px solid var(--linha); border-radius:.8rem; padding:.35rem; }
+.opcoes { display:none; margin-top:.4rem; background:#fff; border:1px solid var(--linha); border-radius:.8rem; padding:.35rem;
+  max-height:440px; overflow-y:auto; }
 .aberto .opcoes { display:block; }
 .op { display:flex; align-items:center; gap:.8rem; width:100%; background:none; border:none; border-radius:.6rem;
   padding:.5rem .6rem; cursor:pointer; color:var(--pet); text-align:left; }
@@ -213,10 +227,10 @@ export default function(component) {
     <button class="atual" aria-haspopup="listbox" aria-expanded="false">
       <span class="ico">${cur.icon}</span><span class="nome">${esc(cur.name)}</span>
       <span class="pill tone-${esc(cur.tone)}">${esc(cur.status)}</span><span class="seta"></span></button>
-    <div class="opcoes" role="listbox">${data.items.map((it) => `
+    <div class="opcoes" role="listbox">${withGroups(data.items, (it) => `
       <button class="op ${it.id === cur.id ? 'sel' : ''}" role="option" data-id="${esc(it.id)}">
         <span class="ico">${it.icon}</span><span class="nome">${esc(it.name)}</span>
-        <span class="pill tone-${esc(it.tone)}">${esc(it.status)}</span></button>`).join('')}</div></div>`;
+        <span class="pill tone-${esc(it.tone)}">${esc(it.status)}</span></button>`)}</div></div>`;
   const combo = root.querySelector('.combo'), btn = root.querySelector('.atual');
   btn.onclick = () => { const open = !combo.classList.contains('aberto'); combo.classList.toggle('aberto', open); btn.setAttribute('aria-expanded', open); };
   root.querySelectorAll('.op').forEach((o) => { o.onclick = () => { combo.classList.remove('aberto'); setStateValue('selected', o.dataset.id); }; });

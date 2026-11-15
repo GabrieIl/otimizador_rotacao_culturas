@@ -17,6 +17,12 @@ def _normalize_rows(matrix: np.ndarray) -> np.ndarray:
     return matrix / np.where(row_sums == 0.0, 1.0, row_sums)
 
 
+def _is_legume(crop_id: str) -> bool:
+    from crop_optimizer.config import load_yaml_config
+
+    return bool(load_yaml_config("culturas")["culturas"].get(crop_id, {}).get("leguminosa"))
+
+
 def build_transition_matrix(crop: CropSpec) -> np.ndarray:
     """Constrói matriz estocástica 5x5 P(s_{t+1} | s_t, cultura) com soma das linhas = 1."""
     if crop.crop_id in ("palma_forrageira", "capim_buffel", "braquiaria"):
@@ -31,7 +37,7 @@ def build_transition_matrix(crop: CropSpec) -> np.ndarray:
             ],
             dtype=np.float64,
         )
-    elif crop.crop_id in ("feijao_caupi", "crotalaria"):
+    elif crop.crop_id in ("feijao_caupi", "crotalaria") or _is_legume(crop.crop_id):
         # Leguminosas fixadoras de nitrogênio
         base = np.array(
             [

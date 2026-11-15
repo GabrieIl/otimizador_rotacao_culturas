@@ -271,6 +271,18 @@ seções 1.4 a 1.8). Detalhes em [features/03-perfil-do-local.md](features/03-pe
   modelo.
 - Detalhes em [features/07-agua-e-insights.md](features/07-agua-e-insights.md).
 
+### Culturas do agricultor familiar (Feature 8)
+
+- **24 culturas em 6 grupos:** grãos, forrageiras, raízes, hortaliças de folha, hortaliças de alto valor e
+  frutas.
+- **Manejo de cada cultura** (`config/culturas.yaml`):
+  - **sequeiro:** o aviso usa ZARC, chuva e risco de quebra;
+  - **com rega:** o aviso mostra o plano de rega neste solo (intervalo máximo entre regas, litros por m² e água
+    do ciclo).
+- **Para adicionar uma cultura,** ela precisa estar em todos os pontos da tabela de
+  [features/08-novas-culturas.md](features/08-novas-culturas.md). O teste `tests/test_culturas_conectadas.py`
+  aponta o que faltar.
+
 ---
 
 ## 8. Como mexer
@@ -290,6 +302,7 @@ seções 1.4 a 1.8). Detalhes em [features/03-perfil-do-local.md](features/03-pe
 | Mudar a régua da quebra de safra | `config/colheita.yaml` (vale para o aviso e o ranking) |
 | Ajustar Kc, raiz (Zr) e p das culturas | `config/agua.yaml` (`# CONFERIR`) |
 | Forçar nova leitura de um valor de lente | apague o PNG em `data/bronze/gibs_pixels/<camada>/` |
+| Adicionar uma cultura | registro em `config/culturas.yaml` + `config/aptidao.yaml` + `config/agua.yaml` + ícone em `app/icons.py` (+ `CropSpec` em `domain/presets.py` se for de sequeiro); rode `pytest tests/test_culturas_conectadas.py` |
 
 Comandos:
 

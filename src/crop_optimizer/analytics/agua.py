@@ -177,3 +177,68 @@ def soil_water_today(
     normal = float(np.median(1 - dr[idx] / taw)) if idx.size else None
     raw = (crop.p if not crop.reserve_in_plant else float(cfg["p_solo_nu"])) * taw
     return SoilWaterToday(day, float(1 - dr[last] / taw), normal, float(max(0.0, dr[last] - raw)), taw, raw)
+
+
+# --- rega (culturas irrigadas) ------------------------------------------------------------------
+
+def et0_climatology(dates: np.ndarray, et0: np.ndarray, first_year: int = 1991, last_year: int = 2020,
+                    half_window: int = 7) -> np.ndarray:
+    """ET0 normal (mm/dia) para cada dia do ano (índice 0 = 1º/jan; 366 posições), média móvel de 15 dias."""
+    years = dates.astype("datetime64[Y]").astype(int) + 1970
+    doy = (dates - dates.astype("datetime64[Y]")).astype(int)
+    mask = (years >= first_year) & (years <= last_year) & np.isfinite(et0)
+    sums = np.bincount(doy[mask], weights=et0[mask], minlength=366)
+    counts = np.bincount(doy[mask], minlength=366)
+    daily = np.where(counts > 0, sums / np.maximum(counts, 1), np.nan)
+    daily[365] = daily[364] if not np.isfinite(daily[365]) else daily[365]
+    padded = np.concatenate([daily[-half_window:], daily, daily[:half_window]])
+    kernel = np.ones(2 * half_window + 1) / (2 * half_window + 1)
+    return np.convolve(np.nan_to_num(padded, nan=float(np.nanmean(daily))), kernel, mode="valid")
+
+
+def kc_curve(crop: CropWater) -> np.ndarray:
+    """Kc de cada dia do ciclo (FAO-56): inicial constante, sobe no desenvolvimento, médio, desce no final."""
+    ini, dev, mid, late = crop.phases
+    k_ini, k_mid, k_end = crop.kc
+    return np.concatenate([
+        np.full(ini, k_ini),
+        np.linspace(k_ini, k_mid, dev, endpoint=False),
+        np.full(mid, k_mid),
+        np.linspace(k_mid, k_end, late),
+    ])
+
+
+@dataclass(frozen=True, slots=True)
+class IrrigationPlan:
+    crop_id: str
+    interval_days: int  # regar a cada N dias no pico do consumo
+    liters_per_m2: float  # em cada rega, no pico (1 mm = 1 L/m²)
+    peak_mm_day: float  # consumo da lavoura no pico
+    total_liters_m2: float  # o ciclo inteiro (anuais) ou um ano (perenes), sem contar a chuva
+    per_year: bool
+    zr_m: float
+    limited_by_depth: bool
+
+
+def irrigation_plan(crop_id: str, cad_mm_m: float, et0_clim: np.ndarray, plant: date,
+                    perennial: bool, depth_m: float | None = None) -> IrrigationPlan | None:
+    """Rega de uma cultura plantada em `plant`: intervalo = RAW / ETc no pico (turno de rega da FAO-56)."""
+    crop = crop_water(crop_id)
+    if crop.reserve_in_plant:
+        return None
+    zr = crop.zr_m if depth_m is None else min(crop.zr_m, depth_m)
+    raw = crop.p * cad_mm_m * zr
+    start = plant.timetuple().tm_yday - 1
+    if perennial:
+        etc = crop.kc[1] * et0_clim  # planta adulta: Kc da fase média o ano todo
+        peak = float(etc.max())
+        total = float(etc[:365].sum())
+    else:
+        kc = kc_curve(crop)
+        days = (start + np.arange(kc.size)) % 366
+        etc = kc * et0_clim[days]
+        peak = float(etc[crop.critical_start: crop.critical_start + max(1, crop.critical_length)].mean())
+        total = float(etc.sum())
+    interval = max(1, int(np.floor(raw / peak)))
+    return IrrigationPlan(crop_id, interval, round(interval * peak, 1), peak, total, perennial, zr,
+                          depth_m is not None and depth_m < crop.zr_m)
