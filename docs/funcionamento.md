@@ -237,6 +237,9 @@ seções 1.4 a 1.8). Detalhes em [features/03-perfil-do-local.md](features/03-pe
   a chuva do ano x média (seta verde/vermelha) e o calendário de chuva, o solo do lugar comparado com a região,
   o solo por cultura (cards + destaque) e o terreno. Detalhes em
   [features/06-paginas-interativas.md](features/06-paginas-interativas.md).
+- **Calendário de chuva (Início e Plantio):** 3 meses por vez, com setas dos lados. A cor do dia é a chance de
+  chover (5 faixas, de 0-1 a 8-10 de cada 10 anos) e o ícone mostra se choveu e quanto (fraca, moderada,
+  forte). Detalhes em [features/08-calendario-de-chuva.md](features/08-calendario-de-chuva.md).
 - **Plantio ("O que devo plantar agora?"):** seletor de cultura com a janela oficial do ZARC, o aviso da cultura
   (Pode plantar / Arriscado / Não plante / Espere) e o risco por atraso. Depois o porquê (calendário da safra,
   início da chuva e veranicos), o ranking das rotações (1 a 10 anos, conforme a prioridade, com "Detalhar") e a
