@@ -44,6 +44,10 @@ def fmt_date(d: date | None) -> str:
     return "—" if d is None else f"{d.day:02d}/{_MONTHS_PT[d.month - 1]}"
 
 
+def fmt_date_year(d: date | None) -> str:
+    return "—" if d is None else f"{d.day:02d}/{_MONTHS_PT[d.month - 1]}/{d.year}"
+
+
 @dataclass(slots=True)
 class CropWindowStatus:
     crop_id: str
@@ -64,10 +68,10 @@ class CropWindowStatus:
         else:
             risk = f"risco a partir de {self.window.best_risk_pct}%, depende do solo e do ciclo"
         if self.state == "ainda_nao_abriu":
-            return f"Janela abre em {fmt_date(self.opens)} e fecha em {fmt_date(self.closes)} ({risk})."
+            return f"Janela abre em {fmt_date_year(self.opens)} e fecha em {fmt_date_year(self.closes)} ({risk})."
         if self.state == "aberta":
-            return f"Janela aberta até {fmt_date(self.closes)}: faltam {self.days_left} dias ({risk})."
-        return f"Janela fechou em {fmt_date(self.closes)}."
+            return f"Janela aberta até {fmt_date_year(self.closes)}: faltam {self.days_left} dias ({risk})."
+        return f"Janela fechou em {fmt_date_year(self.closes)}."
 
 
 @dataclass(slots=True)
