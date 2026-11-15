@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 import polars as pl
@@ -197,3 +198,38 @@ def plot_pareto_frontier(
         margin=dict(l=20, r=20, t=55, b=20),
     )
     return plotly_layout(fig, height=430)
+
+
+def plot_rotation_years(result, family_target: float, herd_target: float) -> go.Figure:
+    """Comida e forragem por ano de UMA rotação: mediana e faixa (10% piores a 10% melhores cenários)."""
+    from plotly.subplots import make_subplots
+
+    years = list(range(1, result.annual_food_kg_ha.shape[1] + 1))
+    fig = make_subplots(rows=1, cols=2, subplot_titles=("Comida (kg de grão por ha)", "Forragem (kg por ha)"))
+    for col, arr, target, color, name in (
+        (1, result.annual_food_kg_ha, family_target, COLORS.ocre, "comida"),
+        (2, result.annual_forage_kg_ha, herd_target, COLORS.verde, "forragem"),
+    ):
+        p10, p50, p90 = (np.percentile(arr, q, axis=0) for q in (10, 50, 90))
+        fig.add_trace(go.Scatter(x=years + years[::-1], y=list(p90) + list(p10[::-1]), fill="toself", mode="lines",
+                                 fillcolor="rgba(22,48,55,0.10)", line=dict(width=0), hoverinfo="skip",
+                                 showlegend=False), row=1, col=col)
+        fig.add_trace(go.Scatter(x=years, y=p50, mode="lines+markers", line=dict(color=color, width=3),
+                                 name=f"{name} (cenário do meio)", showlegend=False), row=1, col=col)
+        fig.add_hline(y=target, line=dict(color=COLORS.vermelho, dash="dash", width=1.5), row=1, col=col,
+                      annotation_text="o que a família precisa" if col == 1 else "o que o rebanho precisa",
+                      annotation_font_size=11, annotation_font_color=COLORS.vermelho)
+    fig.update_xaxes(title_text="ano", dtick=1)
+    fig.update_layout(margin=dict(l=20, r=20, t=50, b=20))
+    return plotly_layout(fig, height=340)
+
+
+def plot_rotation_soil(df_nutrients: pl.DataFrame, strategy_name: str) -> go.Figure:
+    """Matéria orgânica do solo ao longo dos ciclos, para uma rotação."""
+    pdf = df_nutrients.filter(pl.col("strategy_name") == strategy_name).to_pandas()
+    fig = go.Figure(go.Scatter(x=pdf["step_index"], y=pdf["om_mean_pct"], mode="lines+markers",
+                               line=dict(color=COLORS.terracota, width=3), text=pdf["step_label"],
+                               hovertemplate="%{text}<br>matéria orgânica: %{y:.2f}%<extra></extra>"))
+    fig.update_layout(title="Matéria orgânica do solo com esta rotação", xaxis_title="ciclo",
+                      yaxis_title="matéria orgânica (%)", margin=dict(l=20, r=20, t=55, b=20))
+    return plotly_layout(fig, height=320)

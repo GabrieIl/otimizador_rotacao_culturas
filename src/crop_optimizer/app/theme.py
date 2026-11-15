@@ -86,13 +86,25 @@ h1 {{ margin-bottom: 0.25rem; }}
 .acaua-subtitulo {{ color: var(--acaua-texto-suave); font-size: 1rem; margin: 0.15rem 0 0 0; }}
 .acaua-fonte {{ font-family: var(--acaua-fonte-rotulo); font-size: 0.72rem; color: var(--acaua-texto-suave); }}
 
-/* divisor: linha ocre fina com o pixel em escada na ponta */
-.acaua-divisor {{ display: flex; align-items: flex-end; gap: 14px; margin: 2.5rem 0 1.75rem 0; padding-top: 10px; }}
-.acaua-divisor::before {{
-  content: ""; width: 6px; height: 6px; background: var(--acaua-ocre); flex: none; margin-right: 18px;
-  box-shadow: 9px -4px 0 0 rgba(187,146,82,0.8), 18px -8px 0 0 rgba(187,146,82,0.55);
-}}
-.acaua-divisor .linha {{ flex: 1; height: 1px; background: var(--acaua-ocre); opacity: 0.55; margin-bottom: 2px; }}
+/* separação entre seções: só espaço em branco (sem traços) */
+.acaua-espaco {{ height: 3.25rem; }}
+
+/* seção "Sua roça": números grandes */
+.acaua-roca {{ display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 1.5rem; margin: 0.75rem 0 1rem 0; }}
+.acaua-roca .k {{ font-family: var(--acaua-fonte-rotulo); font-size: 0.72rem; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--acaua-texto-suave); margin: 0; }}
+.acaua-roca .v {{ font-family: var(--acaua-fonte-display); font-weight: 800; font-size: 2.3rem; line-height: 1.1;
+  color: var(--acaua-petroleo); margin: 0.2rem 0 0 0; }}
+.acaua-roca .v.num {{ font-size: 1.9rem; font-variant-numeric: tabular-nums; }}
+.acaua-roca .obs {{ color: var(--acaua-texto-suave); font-size: 0.85rem; margin: 0.25rem 0 0 0; }}
+@media (max-width: 640px) {{ .acaua-roca {{ grid-template-columns: 1fr 1fr; }} .acaua-roca > div:first-child {{ grid-column: 1 / -1; }} }}
+/* botão para configurar a roça: destaque enquanto não há roça; discreto depois */
+.st-key-acaua-configurar [data-testid="stPageLink"] a {{ background: var(--acaua-terracota); border-radius: 0.6rem;
+  padding: 0.85rem 1.4rem; display: inline-flex; }}
+.st-key-acaua-configurar [data-testid="stPageLink"] p {{ color: #FFFFFF; font-weight: 700; font-size: 1.05rem; }}
+.st-key-acaua-editar [data-testid="stPageLink"] a {{ border: 1px solid var(--acaua-linha); border-radius: 0.5rem;
+  padding: 0.35rem 0.8rem; display: inline-flex; background: transparent; }}
+.st-key-acaua-editar [data-testid="stPageLink"] p {{ color: var(--acaua-petroleo); font-weight: 500; font-size: 0.9rem; }}
 
 /* métricas: número em display, rótulo discreto */
 [data-testid="stMetricValue"] {{ font-family: var(--acaua-fonte-display); font-weight: 700; color: var(--acaua-petroleo); }}
@@ -163,8 +175,8 @@ def inject() -> None:
 # --- componentes ---------------------------------------------------------------
 
 def divider() -> None:
-    """Divisor da marca: pixel em escada + linha ocre fina."""
-    st.html('<div class="acaua-divisor"><div class="linha"></div></div>')
+    """Separação entre seções: só espaço em branco (o site não usa traços entre seções)."""
+    st.html('<div class="acaua-espaco"></div>')
 
 
 def label(text: str) -> None:

@@ -224,3 +224,21 @@ bases_por_cultura:
   sorgo_forrageiro: baixa
   palma_forrageira: alta   # cartilha UFV: exigente em Ca e Mg
   capim_buffel: baixa
+
+# Descrição curta de cada cultura para o card em destaque (página Início).
+# REVISAR AGRÔNOMO: textos escritos pela equipe a partir das exigências acima.
+descricao_culturas:
+  milho_sertanejo: >-
+    Cereal de ciclo médio. É a cultura do grupo que mais sente falta de água, principalmente na
+    floração, e a que mais pede nitrogênio.
+  feijao_caupi: >-
+    Leguminosa de ciclo curto. Fixa o próprio nitrogênio com bactérias da raiz, mas precisa de
+    fósforo para isso. Aguenta a seca melhor que o milho.
+  sorgo_forrageiro: >-
+    Cereal resistente à seca: segura o crescimento no veranico e volta a crescer com a chuva.
+    Serve para grão e para forragem.
+  palma_forrageira: >-
+    Cacto forrageiro que guarda água na raquete (cladódio). Não vai bem em solo ácido, salino ou
+    encharcado e pede potássio, cálcio e magnésio.
+  capim_buffel: >-
+    Capim perene muito resistente à seca, usado como pasto no semiárido. Aguenta solo pobre.
