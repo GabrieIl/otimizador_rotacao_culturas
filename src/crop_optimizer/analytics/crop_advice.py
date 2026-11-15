@@ -16,6 +16,7 @@ from typing import Literal
 
 from crop_optimizer.analytics.rain_delay import CropWindowStatus, fmt_date
 from crop_optimizer.analytics.views import classify_traffic_light
+from crop_optimizer.config import load_yaml_config
 from crop_optimizer.engine.rain_onset import RainSeasonStatus
 
 Level = Literal["verde", "amarelo", "vermelho", "espera"]
@@ -28,7 +29,15 @@ class CropVerdict:
     level: Level
     word: str
     reason: str
-    risk_of_10: int  # em quantos de cada 10 anos a roça quebra, com o atraso de hoje
+    risk_of_10: int  # em quantos de cada 10 anos dá quebra de safra, com o atraso de hoje
+
+
+def failure_rule_text() -> str:
+    """A régua da quebra de safra em palavras (config/colheita.yaml)."""
+    limiar = float(load_yaml_config("colheita")["quebra_safra"]["limiar_colheita_relativa"])
+    if abs(limiar - 0.5) < 1e-9:
+        return "colhe menos da metade do normal"
+    return f"colhe menos de {round(limiar * 100)}% do normal"
 
 
 def crop_verdict(
@@ -56,7 +65,8 @@ def crop_verdict(
                            f"A janela oficial fechou em {fmt_date(window.closes)}.", of_10)
     level = classify_traffic_light(risk_pct).value
     atraso = f"com {delay_days} dias de atraso da chuva" if delay_days > 0 else "com a chuva no tempo"
-    reason = f"Plantando agora, {atraso}, a roça quebra em {of_10} de cada 10 anos."
+    reason = (f"Plantando agora, {atraso}, dá quebra de safra em {of_10} de cada 10 anos "
+              f"({failure_rule_text()}).")
     if status is not None and status.state == "firmando":
         reason += " A chuva atingiu o critério de início, mas ainda falta confirmar que não vem veranico."
     return CropVerdict(crop_id, level, WORDS[level], reason, of_10)

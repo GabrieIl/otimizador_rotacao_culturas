@@ -432,7 +432,7 @@ export default function(component) {
     <div class="item ${i === 0 ? 'top' : ''} ${it.id === data.detail ? 'aberto' : ''}">
       <div class="pos">${i + 1}</div>
       <div><p class="nome">${esc(it.name)}</p>
-        <div class="chips"><span>aguenta <b>${it.aguenta} de 10 anos</b></span><span>${esc(it.risco)}</span>
+        <div class="chips"><span>colhe em <b>${it.aguenta} de 10 anos</b></span><span>${esc(it.risco)}</span>
           <span>comida <b>${esc(it.comida)}</b></span><span>forragem <b>${esc(it.forragem)}</b></span></div>
         <div class="nota" title="nota ${Math.round(it.nota)} de 100 para a prioridade escolhida"><span style="width:${Math.max(2, Math.min(100, it.nota))}%"></span></div></div>
       <button class="det anim" data-id="${esc(it.id)}">${it.id === data.detail ? 'Fechar' : 'Detalhar'}</button></div>`).join('') + '</div>';

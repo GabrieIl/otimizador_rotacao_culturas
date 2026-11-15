@@ -59,7 +59,7 @@ def compute_pareto_frontier(
 
 
 def rank_by_survival(results: list[StrategySimulationResult]) -> list[StrategySimulationResult]:
-    """Ranqueia rotações minimizando a probabilidade de 2 anos seguidos de perda total."""
+    """Ranqueia rotações minimizando a probabilidade de 2 quebras de safra seguidas."""
     return sorted(
         results,
         key=lambda r: (

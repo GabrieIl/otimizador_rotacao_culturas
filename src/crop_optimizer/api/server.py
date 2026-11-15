@@ -67,8 +67,8 @@ def _run_simulation_bundle(
     matrix = build_planting_window_risk_matrix(
         stats,
         delay_days_grid=[config.safra_delay_days],
-        veranico_days=config.veranico_days,
         n_samples=min(2_000, config.n_scenarios),
+        config=config,
     )
     corn_row = matrix.filter(matrix["crop_id"] == "milho_sertanejo")
     corn_risk = float(corn_row["failure_prob_pct"][0]) if corn_row.height > 0 else 50.0

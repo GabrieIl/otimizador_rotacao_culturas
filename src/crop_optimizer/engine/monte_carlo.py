@@ -162,6 +162,8 @@ class MonteCarloRotationEngine:
         area_share = ler_factor / n_annual
 
         annual_food = np.zeros((n_scen, horizon), dtype=np.float64)
+        # Colheita relativa do ano (1.0 = sem falta de água nesta terra): média das culturas do ano.
+        annual_relative = np.zeros((n_scen, horizon), dtype=np.float64)
         annual_forage = np.zeros((n_scen, horizon), dtype=np.float64)
         annual_profit = np.zeros((n_scen, horizon), dtype=np.float64)
         npv_profit = np.zeros(n_scen, dtype=np.float64)
@@ -175,9 +177,8 @@ class MonteCarloRotationEngine:
             effective_stress = np.maximum(0.0, climate_stress[:, t] * (1.0 - soil_buffer))
 
             grain_yield_factor = np.clip(1.0 - 0.92 * effective_stress, 0.08, 1.15)
-            soil_effect = (
-                soil_out.yield_multiplier[:, t] / base_soil_mult
-            ) * config.soil_crop_factors.get(crop.crop_id, 1.0)
+            soil_change = soil_out.yield_multiplier[:, t] / base_soil_mult  # a rotação melhora/piora o solo
+            soil_effect = soil_change * config.soil_crop_factors.get(crop.crop_id, 1.0)
             realized_grain_ton = (
                 crop.base_yield_ton_ha
                 * area_share
@@ -197,6 +198,14 @@ class MonteCarloRotationEngine:
                 * (0.5 + 0.5 * soil_effect)
                 * forage_factor
             )
+
+            # Colheita relativa ao normal DESTA terra: o fator fixo do solo local não conta como quebra;
+            # o atraso, o veranico, a falta de chuva e a mudança do solo pela rotação, sim.
+            if crop.food_fraction > 0.0:
+                relative = delay_yield_cap[t] * soil_change * grain_yield_factor
+            else:
+                relative = (0.5 + 0.5 * soil_change) * forage_factor
+            annual_relative[:, yr_idx] += relative / n_annual
 
             annual_food[:, yr_idx] += food_kg
             annual_forage[:, yr_idx] += forage_kg
@@ -219,12 +228,10 @@ class MonteCarloRotationEngine:
             npv_profit += step_profit * discount_factor
 
         # 5. Métricas de Sobrevivência (Foco Sertão)
-        food_deficit = annual_food < (0.65 * config.family_food_target_kg_year)
         forage_deficit = annual_forage < (0.75 * config.herd_forage_target_kg_year)
-        # Perda severa anual: colapso da comida OU falta crítica de forragem para o rebanho
-        severe_year_loss = (food_deficit & forage_deficit) | (
-            annual_food < (0.45 * config.family_food_target_kg_year)
-        )
+        # Quebra de safra: colheita relativa do ano abaixo da régua única (config/colheita.yaml), a mesma
+        # do aviso por cultura. Assim "Só milho" no ranking e o milho no aviso contam a mesma coisa.
+        severe_year_loss = annual_relative < config.harvest_failure_threshold
 
         if horizon >= 2:
             two_consec_loss = np.any(severe_year_loss[:, :-1] & severe_year_loss[:, 1:], axis=1)
@@ -285,6 +292,7 @@ class MonteCarloRotationEngine:
             final_soil_score_std=final_soil_std,
             total_fertilizer_savings_mean=total_fert_savings,
             execution_ms=elapsed_ms,
+            relative_harvest=annual_relative,
             metadata={
                 "var_95_brl_ha": var_5,
                 "final_nitrogen_mean": float(np.mean(soil_out.nitrogen_kg_ha[:, -1])),
@@ -292,6 +300,24 @@ class MonteCarloRotationEngine:
                 "annual_loss_prob": mean_annual_loss_rate,
             },
         )
+
+    def harvest_failure_prob(
+        self,
+        crop_id: str,
+        climate_stats: SeasonalClimateStats,
+        config: SimulationConfig,
+    ) -> float:
+        """Chance (0-1) de quebra de safra de UMA cultura plantada sozinha, no próximo ano.
+
+        É o mesmo motor do ranking (rotação de uma cultura, horizonte de 1 ano), com o veranico
+        sorteado do histórico real e a mesma régua de quebra.
+        """
+        crop = self.crops_catalog[crop_id]
+        single = RotationStrategy(
+            strategy_id=f"so_{crop_id}", name=crop.name, description=crop.name, annual_sequence=[crop_id]
+        )
+        result = self.simulate_strategy(single, climate_stats, config.model_copy(update={"horizon_years": 1}))
+        return float(np.mean(result.relative_harvest[:, 0] < config.harvest_failure_threshold))
 
     def simulate_portfolio(
         self,

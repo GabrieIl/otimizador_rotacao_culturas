@@ -248,7 +248,10 @@ seções 1.4 a 1.8). Detalhes em [features/03-perfil-do-local.md](features/03-pe
   na Início/Satélite). "Simular outra data", no topo e fechado, troca o dia usado no cálculo da chuva
   (útil para a demonstração fora da época). Ex.: Irecê em 20/12/2025 mostra chuva atrasada.
 - **Horizonte da simulação** (1, 2, 3 ou 5 anos) é um filtro em "Rotações" e vale só para os painéis
-  da simulação. Com 1 ano, o risco mostrado é "perder a safra no ano", não "2 anos seguidos".
+  da simulação. Com 1 ano, o risco mostrado é "quebra de safra no ano", não "2 quebras seguidas".
+- **Quebra de safra (régua única):** colher menos da metade do normal desta terra (`config/colheita.yaml`).
+  O aviso de cada cultura e o ranking das rotações usam o mesmo motor e essa mesma régua. O aviso é a cultura
+  sozinha por 1 ano. Ver [fixes/02-regua-unica-quebra-de-safra.md](fixes/02-regua-unica-quebra-de-safra.md).
 - **"Chuva da safra":** frase principal, quatro números (quando firmou, normal, atraso, atraso usado na
   simulação), fonte e critério na legenda, e janelas do ZARC.
 - **Semáforo e placar (abaixo):** usam o atraso calculado, mas o clima de fundo ainda é sintético (seção 2).

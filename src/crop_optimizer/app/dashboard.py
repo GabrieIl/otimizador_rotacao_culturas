@@ -76,15 +76,28 @@ def _climate_stats(location_id: str, veranico_prob: float | None, veranico_lengt
     return replace(stats, veranico_prob=veranico_prob, veranico_lengths=veranico_lengths)
 
 
-@st.cache_data(show_spinner=False)
-def _risk_matrix(location_id: str, safra_delay_days: int, typical_veranico_days: int,
-                 veranico_prob: float | None, veranico_lengths: tuple[int, ...]):
-    """Matriz atraso x cultura do semáforo (não depende do horizonte)."""
+def _soil_config(location_id: str, soil: dict) -> SimulationConfig:
+    """Configuração do motor com o solo de hoje (a mesma no aviso e no ranking)."""
+    return SimulationConfig(
+        location_id=location_id,
+        n_scenarios=N_SCENARIOS,
+        initial_soil_state=SoilHealthState(soil["initial_soil_val"]),
+        initial_organic_matter_pct=soil["initial_om_pct"],
+        initial_nitrogen_kg_ha=soil["initial_n_kg_ha"],
+        soil_crop_factors=dict(soil["soil_factors"]),
+        veranico_days=0,  # o veranico vem do sorteio com o histórico real, não de um valor fixo
+    )
+
+
+@st.cache_data(show_spinner="Rodando 10.000 cenários por cultura...")
+def _risk_matrix(location_id: str, safra_delay_days: int, veranico_prob: float | None,
+                 veranico_lengths: tuple[int, ...], soil_items: tuple):
+    """Matriz atraso x cultura do aviso: o mesmo motor e a mesma régua do ranking (1 ano, 1 cultura)."""
     return build_planting_window_risk_matrix(
         _climate_stats(location_id, veranico_prob, veranico_lengths),
         delay_days_grid=sorted({*DELAY_GRID, safra_delay_days}),
-        veranico_days=typical_veranico_days,
         n_samples=N_SCENARIOS,
+        config=_soil_config(location_id, dict(soil_items)),
     )
 
 
@@ -171,7 +184,8 @@ def _delay_data(df_matrix, crop_id: str, delay: int) -> dict:
                        "current": r["delay_days"] == delay})
     phrase = (f"Hoje a chuva está {delay} dias atrasada." if delay > 0
               else "Hoje não há atraso de chuva a considerar.")
-    return {"title": "Se a chuva atrasar: em quantos de cada 10 anos a roça quebra", "phrase": phrase, "points": points}
+    return {"title": "Se a chuva atrasar: em quantos de cada 10 anos dá quebra de safra", "phrase": phrase,
+            "points": points}
 
 
 def _why_section(report, series, location_json: str, as_of: date) -> None:
@@ -250,10 +264,15 @@ def plantio_page() -> None:
     veranico = report.veranico if report is not None else None
     if veranico is not None and veranico.seasons_with_onset:
         veranico_args = (round(veranico.probability, 3), veranico.veranico_lengths)
-        typical_veranico = veranico.typical_longest
     else:
-        veranico_args, typical_veranico = (None, ()), 7
-    df_matrix = _risk_matrix(location_id, delay, typical_veranico, *veranico_args)
+        veranico_args = (None, ())
+    soil_args = {
+        "initial_soil_val": int(initial_markov_state(profile.get("mo_pct"))),
+        "initial_om_pct": round(profile.get("mo_pct"), 2),
+        "initial_n_kg_ha": round(available_nitrogen_kg_ha(profile), 1),
+        "soil_factors": tuple(sorted((c.crop_id, round(c.yield_factor, 3)) for c in suitability)),
+    }
+    df_matrix = _risk_matrix(location_id, delay, *veranico_args, tuple(soil_args.items()))
 
     # --- o que plantar: seletor + janela + aviso --------------------------------------
     names = crop_names()
@@ -316,16 +335,16 @@ def plantio_page() -> None:
      df_climate_annual) = _run_cached_simulation(
         location_id=location_id,
         horizon_years=horizon_years,
-        initial_soil_val=int(initial_markov_state(profile.get("mo_pct"))),
+        initial_soil_val=soil_args["initial_soil_val"],
         safra_delay_days=delay,
         veranico_prob=veranico_args[0],
         veranico_lengths=veranico_args[1],
-        initial_om_pct=round(profile.get("mo_pct"), 2),
-        initial_n_kg_ha=round(available_nitrogen_kg_ha(profile), 1),
-        soil_factors=tuple(sorted((c.crop_id, round(c.yield_factor, 3)) for c in suitability)),
+        initial_om_pct=soil_args["initial_om_pct"],
+        initial_n_kg_ha=soil_args["initial_n_kg_ha"],
+        soil_factors=soil_args["soil_factors"],
     )
     ranked = rank_by_balance_priority(results, priority)
-    risk_txt = ("perde a safra" if horizon_years == 1 else "2 anos seguidos de perda")
+    risk_txt = ("quebra de safra" if horizon_years == 1 else "2 quebras de safra seguidas")
     items = [{
         "id": r.strategy.strategy_id, "name": r.strategy.short_name or r.strategy.name,
         "aguenta": r.survival_score_of_10,
