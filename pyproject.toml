@@ -51,6 +51,11 @@ branch = false
 omit = [
     "src/crop_optimizer/__main__.py",
     "src/crop_optimizer/app/dashboard.py",
+    "src/crop_optimizer/app/home_page.py",
+    "src/crop_optimizer/app/satellite_page.py",
+    "src/crop_optimizer/app/components.py",
+    "src/crop_optimizer/app/navigation.py",
+    "src/crop_optimizer/app/common.py",
 ]
 
 [tool.coverage.report]

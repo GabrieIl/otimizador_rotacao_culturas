@@ -30,7 +30,14 @@ from crop_optimizer.config import load_yaml_config
 from crop_optimizer.domain.models import LocationSpec
 from crop_optimizer.domain.presets import DEFAULT_LOCATIONS
 from crop_optimizer.domain.roca import Roca
-from crop_optimizer.ingestion.geocode import GeocodeUnavailable, inside_brazil_box, resolve_place
+from crop_optimizer.ingestion.geocode import (
+    BRAZIL_UFS,
+    GeocodeUnavailable,
+    PlaceCandidate,
+    inside_brazil_box,
+    resolve_place,
+    search_places,
+)
 from crop_optimizer.ingestion.gibs import GibsLayer, GibsUnavailable, load_layers
 from crop_optimizer.ingestion.gibs_values import GibsValueUnavailable
 from crop_optimizer.ingestion.rain_history import RainDataUnavailable, RainSeries, fetch_rain_series
@@ -126,6 +133,25 @@ def _set_point(lat: float, lon: float) -> None:
         st.session_state[key] = value
 
 
+def _apply_candidate(candidate: PlaceCandidate) -> None:
+    """Salva o município buscado como a roça ativa e reposiciona os campos do mapa."""
+    aviso = None if candidate.ibge_code else "Município achado, mas sem código no IBGE: o ZARC não vai aparecer."
+    set_roca(
+        Roca(
+            lat=candidate.lat,
+            lon=candidate.lon,
+            municipio=candidate.municipio,
+            uf=candidate.uf,
+            ibge_code=candidate.ibge_code,
+            aviso_municipio=aviso,
+        )
+    )
+    st.session_state[_PENDING] = (candidate.lat, candidate.lon)
+    st.session_state[_REQUEST] = [candidate.lat, candidate.lon]
+    st.session_state.pop("_busca_roca_resultados", None)
+    st.rerun()
+
+
 def _location_picker(roca: Roca | None, current: LocationSpec) -> None:
     # O ponto acompanha a seleção feita em qualquer página (exemplo na Início, roça confirmada aqui).
     if st.session_state.get("_sat_origem") != current.location_id:
@@ -139,9 +165,48 @@ def _location_picker(roca: Roca | None, current: LocationSpec) -> None:
 
     with st.expander("Onde fica a sua roça?", expanded=roca is None):
         st.caption(
-            "Digite a latitude e a longitude (do GPS do celular, por exemplo) ou clique no mapa. "
-            "No Nordeste as duas são negativas."
+            "Busque pelo nome do município, povoado ou CEP, digite a latitude/longitude do GPS "
+            "ou clique direto no mapa (no Nordeste, latitude e longitude são negativas)."
         )
+        s1, s2, s3 = st.columns([2, 1, 1])
+        query = s1.text_input(
+            "Município, povoado ou CEP",
+            placeholder="Ex.: Ouricuri, Tauá, Monteiro ou 56300-000",
+            key="busca_roca_texto",
+        )
+        uf_options = ["Todos"] + list(BRAZIL_UFS)
+        uf_sel = s2.selectbox("Estado (UF)", uf_options, index=0, key="busca_roca_uf")
+        s3.write("")
+        if s3.button("Buscar local", width="stretch"):
+            if not query.strip():
+                st.warning("Digite o nome de um município, povoado ou CEP antes de buscar.")
+            else:
+                uf_param = None if uf_sel == "Todos" else uf_sel
+                with st.spinner("Procurando município (OpenStreetMap + IBGE)..."):
+                    try:
+                        hits = search_places(query, uf=uf_param)
+                    except GeocodeUnavailable as exc:
+                        st.error(f"Não foi possível buscar o local agora: {exc}")
+                    else:
+                        if not hits:
+                            st.session_state.pop("_busca_roca_resultados", None)
+                            st.warning("Nenhum local encontrado no Brasil com esse nome. Tente acrescentar o estado.")
+                        elif len(hits) == 1:
+                            _apply_candidate(hits[0])
+                        else:
+                            st.session_state["_busca_roca_resultados"] = hits
+
+        hits = st.session_state.get("_busca_roca_resultados") or []
+        if hits:
+            idx = st.selectbox(
+                "Foram encontrados mais de um local. Escolha o seu:",
+                range(len(hits)),
+                format_func=lambda i: f"{hits[i].label} ({hits[i].lat:.3f}, {hits[i].lon:.3f})",
+                key="busca_roca_escolha",
+            )
+            if st.button("Confirmar local escolhido", type="primary"):
+                _apply_candidate(hits[idx])
+
         c1, c2, c3 = st.columns([1, 1, 1])
         lat = c1.number_input("Latitude", min_value=-90.0, max_value=90.0, format="%.5f", **watch("lat_roca"))
         lon = c2.number_input("Longitude", min_value=-180.0, max_value=180.0, format="%.5f", **watch("lon_roca"))

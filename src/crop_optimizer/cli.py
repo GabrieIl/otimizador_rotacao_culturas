@@ -28,16 +28,43 @@ from crop_optimizer.engine import (
 from crop_optimizer.lakehouse.catalog import LakehouseCatalog
 
 
-def cmd_elt(data_dir: str | None = None, mode: str | None = None) -> None:
+def cmd_elt(
+    data_dir: str | None = None,
+    mode: str | None = None,
+    include_zarc: bool = False,
+) -> None:
     settings = get_settings(data_dir)
     if mode in ("offline", "online"):
         settings.ingestion_mode = mode  # type: ignore[assignment]
-    summary = CropLakehouseEltPipeline(settings).run()
+    summary = CropLakehouseEltPipeline(settings, include_zarc_download=include_zarc).run()
     print(
         f"[ELT] Concluído em {summary.elapsed_ms:.1f} ms | "
         f"Clima: {summary.climate_rows} linhas | "
         f"ZARC: {summary.zarc_rows} | Mercado: {summary.market_rows}"
     )
+
+
+def cmd_zarc(data_dir: str | None = None, ibge_codes: list[str] | None = None) -> None:
+    """Pré-baixa a tábua ZARC oficial (MAPA/Embrapa) e gera o recorte Silver para os exemplos."""
+    from crop_optimizer.domain.presets import DEFAULT_LOCATIONS
+    from crop_optimizer.ingestion.zarc_tabua import load_zarc_table
+
+    settings = get_settings(data_dir)
+    codes = ibge_codes or [loc.ibge_code for loc in DEFAULT_LOCATIONS if loc.ibge_code]
+    last_mb = -1
+
+    def _on_progress(downloaded: int, total: int | None) -> None:
+        nonlocal last_mb
+        mb = int(downloaded // (10 * 1024 * 1024))
+        if mb > last_mb:
+            last_mb = mb
+            if total and total > 0:
+                print(f"[ZARC] Baixando: {downloaded / 1e6:.1f} / {total / 1e6:.1f} MB...")
+            else:
+                print(f"[ZARC] Baixando: {downloaded / 1e6:.1f} MB...")
+
+    table = load_zarc_table(codes, settings, progress_callback=_on_progress)
+    print(f"[ZARC] Cache atualizado com {table.height} linhas para {len(codes)} município(s).")
 
 
 def cmd_simulate(
@@ -109,9 +136,10 @@ def cmd_simulate(
     print(compose_radio_script(config.farmer_name, location, delay_days, light, traditional, resilient))
 
 
-def cmd_app() -> None:
+def cmd_app(extra_args: list[str] | None = None) -> None:
     dashboard_path = Path(__file__).resolve().parent / "app" / "dashboard.py"
-    subprocess.run([sys.executable, "-m", "streamlit", "run", str(dashboard_path)], check=True)
+    cmd = [sys.executable, "-m", "streamlit", "run", str(dashboard_path), *(extra_args or [])]
+    subprocess.run(cmd, check=True)
 
 
 def cmd_api(host: str = "127.0.0.1", port: int = 8000) -> None:
@@ -128,6 +156,11 @@ def main(argv: list[str] | None = None) -> None:
     p_elt = subparsers.add_parser("elt", help="Executa pipeline ELT assíncrono (Bronze -> Silver -> Gold Parquet)")
     p_elt.add_argument("--data-dir", default=None)
     p_elt.add_argument("--mode", choices=["offline", "online"], default=None)
+    p_elt.add_argument("--include-zarc", action="store_true", help="Baixa a tábua real ZARC para o lakehouse")
+
+    p_zarc = subparsers.add_parser("zarc", help="Pré-baixa a tábua oficial ZARC (MAPA/Embrapa) para cache local")
+    p_zarc.add_argument("--data-dir", default=None)
+    p_zarc.add_argument("--ibge", nargs="*", default=None, help="Códigos IBGE extras para indexar na Silver")
 
     p_sim = subparsers.add_parser("simulate", help="Roda benchmark DuckDB + Monte Carlo (10k cenários)")
     p_sim.add_argument("--location", default="petrolina_pe")
@@ -145,7 +178,9 @@ def main(argv: list[str] | None = None) -> None:
 
     args = parser.parse_args(argv)
     if args.command == "elt":
-        cmd_elt(data_dir=args.data_dir, mode=args.mode)
+        cmd_elt(data_dir=args.data_dir, mode=args.mode, include_zarc=args.include_zarc)
+    elif args.command == "zarc":
+        cmd_zarc(data_dir=args.data_dir, ibge_codes=args.ibge)
     elif args.command == "simulate":
         cmd_simulate(
             location_id=args.location,
