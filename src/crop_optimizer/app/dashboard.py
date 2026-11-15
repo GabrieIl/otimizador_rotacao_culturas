@@ -18,7 +18,12 @@ from crop_optimizer.analytics import (
 )
 from crop_optimizer.analytics.crop_advice import crop_verdict, irrigated_verdict
 from crop_optimizer.analytics.rain_calendar import calendar_months, dry_spells
-from crop_optimizer.analytics.rain_delay import CropWindowStatus, describe_status, fmt_date
+from crop_optimizer.analytics.rain_delay import (
+    CropWindowStatus,
+    describe_status,
+    fmt_date,
+    seasonal_stats_from_rain_series,
+)
 from crop_optimizer.analytics.soil_suitability import (
     TEXTURE_LABELS,
     available_nitrogen_kg_ha,
@@ -36,18 +41,19 @@ from crop_optimizer.app.charts import (
 )
 from crop_optimizer.app.common import (
     current_location,
+    ensure_zarc_downloaded_with_progress,
     rain_chance,
     rain_series,
     soil_profile,
     water_by_crop,
-    zarc_decendios,
 )
 from crop_optimizer.app.common import lakehouse_catalog as _get_lakehouse_catalog
 from crop_optimizer.app.common import rain_delay_report as _rain_delay_report
+from crop_optimizer.app.common import zarc_status as _zarc_status
 from crop_optimizer.app.home_page import crop_names, home_page
 from crop_optimizer.app.icons import CROP_ICONS
 from crop_optimizer.app.satellite_page import satellite_page
-from crop_optimizer.app.state import arrived, keep, store, stored, watch
+from crop_optimizer.app.state import arrived, keep, set_roca, store, stored, watch
 from crop_optimizer.config import load_yaml_config
 from crop_optimizer.domain.crop_registry import (
     crop_info,
@@ -58,13 +64,18 @@ from crop_optimizer.domain.crop_registry import (
 )
 from crop_optimizer.domain.models import BalancePriority, SimulationConfig, SoilHealthState
 from crop_optimizer.domain.presets import DEFAULT_STRATEGIES
-from crop_optimizer.domain.roca import nearest_preset
+from crop_optimizer.domain.roca import Roca, nearest_preset
 from crop_optimizer.engine import MonteCarloRotationEngine, compute_pareto_frontier
 from crop_optimizer.engine.pareto import annual_profit, rank_by_balance_priority
-from crop_optimizer.engine.rain_onset import OnsetCriteria
+from crop_optimizer.engine.rain_onset import OnsetCriteria, season_start_for
+from crop_optimizer.ingestion.geocode import GeocodeUnavailable, resolve_place
 from crop_optimizer.ingestion.power_temperature import TemperatureUnavailable
 from crop_optimizer.ingestion.rain_history import RainDataUnavailable
-from crop_optimizer.ingestion.zarc_tabua import decendio_end_label, decendio_start_label
+from crop_optimizer.ingestion.zarc_tabua import (
+    cycle_label,
+    decendio_end_label,
+    decendio_start_label,
+)
 
 DELAY_GRID = [0, 7, 14, 21, 28, 35]
 N_SCENARIOS = 10_000  # fixo: cenários do Monte Carlo
@@ -80,6 +91,9 @@ _PRIORITY = {
     BalancePriority.ESCUDO: "Estabilidade",
     BalancePriority.RENDA: "Renda",
 }
+
+
+RainOverride = tuple[str, float, float, float, float]
 
 
 def _round5(mm: float) -> int:
@@ -154,9 +168,24 @@ def _water_block(crop_id: str, crop_name: str, water: dict | None, veranico_days
     return {"title": "Quantos dias a terra segura a lavoura", "bars": bars, "phrase": phrase, "solo": solo}
 
 
-def _climate_stats(location_id: str, veranico_prob: float | None, veranico_lengths: tuple[int, ...]):
-    """Estatísticas do lakehouse com o veranico trocado pelo observado na chuva real (NASA POWER)."""
+def _climate_stats(
+    location_id: str,
+    veranico_prob: float | None,
+    veranico_lengths: tuple[int, ...],
+    rain_override: RainOverride | None = None,
+):
+    """Estatísticas do lakehouse calibradas com chuva/veranico reais do ponto (NASA POWER)."""
     stats = _get_lakehouse_catalog().get_seasonal_climate_stats(location_id)
+    if rain_override is not None:
+        pt_id, safra_mean, safra_std, safrinha_mean, safrinha_std = rain_override
+        stats = replace(
+            stats,
+            location_id=pt_id,
+            safra_rain_mean_mm=safra_mean,
+            safra_rain_std_mm=safra_std,
+            safrinha_rain_mean_mm=safrinha_mean,
+            safrinha_rain_std_mm=safrinha_std,
+        )
     if veranico_prob is None:
         return stats
     return replace(stats, veranico_prob=veranico_prob, veranico_lengths=veranico_lengths)
@@ -187,11 +216,17 @@ def _soil_config(location_id: str, soil: dict) -> SimulationConfig:
 
 
 @st.cache_data(show_spinner="Rodando 10.000 cenários por cultura...")
-def _risk_matrix(location_id: str, safra_delay_days: int, veranico_prob: float | None,
-                 veranico_lengths: tuple[int, ...], soil_items: tuple):
+def _risk_matrix(
+    location_id: str,
+    safra_delay_days: int,
+    veranico_prob: float | None,
+    veranico_lengths: tuple[int, ...],
+    soil_items: tuple,
+    rain_override: RainOverride | None = None,
+):
     """Matriz atraso x cultura do aviso: o mesmo motor e a mesma régua do ranking (1 ano, 1 cultura)."""
     return build_planting_window_risk_matrix(
-        _climate_stats(location_id, veranico_prob, veranico_lengths),
+        _climate_stats(location_id, veranico_prob, veranico_lengths, rain_override),
         delay_days_grid=sorted({*DELAY_GRID, safra_delay_days}),
         n_samples=N_SCENARIOS,
         config=_soil_config(location_id, dict(soil_items)),
@@ -209,9 +244,10 @@ def _run_cached_simulation(
     initial_om_pct: float = 2.2,
     initial_n_kg_ha: float = 55.0,
     soil_factors: tuple[tuple[str, float], ...] = (),
+    rain_override: RainOverride | None = None,
 ):
     catalog = _get_lakehouse_catalog()
-    climate_stats = _climate_stats(location_id, veranico_prob, veranico_lengths)
+    climate_stats = _climate_stats(location_id, veranico_prob, veranico_lengths, rain_override)
     locations = {loc.location_id: loc for loc in catalog.load_locations()}
     location = locations[location_id]
     crops = {c.crop_id: c for c in catalog.load_crops()}
@@ -250,29 +286,91 @@ def _run_cached_simulation(
     )
 
 
-def _zarc_data(crop_id: str, window: CropWindowStatus | None, ibge: str | None, today: date, report) -> dict:
-    zarc_name = load_yaml_config("zarc")["culturas"].get(crop_id)
-    source = f"ZARC {load_yaml_config('zarc')['safra']} (MAPA/Embrapa), sequeiro"
+def _zarc_data(
+    crop_id: str,
+    window: CropWindowStatus | None,
+    today: date,
+    zarc_res,
+    place_name: str,
+) -> dict:
+    zarc_cfg = load_yaml_config("zarc")
+    zarc_name = zarc_cfg["culturas"].get(crop_id)
+    soil_lbl = TEXTURE_LABELS.get(zarc_res.soil_group) if getattr(zarc_res, "soil_group", None) else None
+    cyc_code = getattr(zarc_res, "cycle_code", None)
+    filters = []
+    if soil_lbl:
+        filters.append(f"solo {soil_lbl}")
+    if cyc_code:
+        filters.append(f"ciclo {cycle_label(cyc_code)}")
+    filter_txt = f" ({', '.join(filters)})" if filters else ""
+    source = f"ZARC {zarc_cfg['safra']} (MAPA/Embrapa), sequeiro · {place_name}{filter_txt}"
     if zarc_name is None:
-        if is_irrigated(crop_id):
-            detail = ("A tábua do ZARC usada aqui cobre só grãos de sequeiro. Com rega, a época de plantio depende "
-                      "da água disponível, do calor e do mercado, não da janela de chuva.")
-        elif is_perennial(crop_id) and crop_id in ("palma_forrageira", "capim_buffel"):
-            detail = "Esta cultura não tem janela anual na tábua do ZARC (é perene). O aviso usa só o risco do clima."
-        else:
-            detail = ("Esta cultura não está na tábua de dados abertos do ZARC (que só traz grãos anuais). "
-                      "O aviso usa só o risco do clima.")
-        return {"has_window": False, "state_txt": "Sem janela oficial no ZARC", "detail": detail, "source": source}
-    if report is not None and report.zarc_error:
-        return {"has_window": False, "state_txt": "ZARC indisponível", "detail": report.zarc_error, "source": source}
+        return {
+            "has_window": False,
+            "state_txt": "Sem janela oficial no ZARC",
+            "detail": "Esta cultura não tem janela anual na tábua do ZARC (é perene). O aviso usa só o risco do clima.",
+            "source": source,
+        }
+    if zarc_res.zarc_error:
+        return {
+            "has_window": False,
+            "state_txt": "ZARC indisponível",
+            "detail": zarc_res.zarc_error,
+            "source": source,
+        }
     if window is None or window.window is None:
-        return {"has_window": False, "state_txt": "Não indicado neste município",
-                "detail": "O ZARC não indica plantio desta cultura em sequeiro aqui: em todos os solos e ciclos, "
-                          "o risco passa de 40% ou o município não foi zoneado.", "source": source}
+        soil_msg = f" para solo de textura {soil_lbl}" if soil_lbl else " para o perfil selecionado"
+        cyc_msg = f" no ciclo {cycle_label(cyc_code)}" if cyc_code else ""
+        return {
+            "has_window": False,
+            "state_txt": "Não indicado para este perfil",
+            "detail": (
+                f"O ZARC não indica plantio desta cultura em sequeiro neste município{soil_msg}{cyc_msg}: "
+                "o risco passa de 40% ou essa combinação não foi zoneada."
+            ),
+            "source": source,
+        }
     labels = [f"{decendio_start_label(i)} a {decendio_end_label(i)}" for i in range(1, 37)]
     doy = (today - date(today.year, 1, 1)).days
-    return {"has_window": True, "decendios": zarc_decendios(ibge, zarc_name), "labels": labels,
-            "today_pos": round(100 * (doy + 0.5) / 365, 2), "state_txt": window.phrase, "source": source}
+    decs = zarc_res.decendios_by_crop.get(crop_id) or [0] * 36
+    source_full = f"{source} · {window.window.portaria}" if window.window.portaria else source
+    return {
+        "has_window": True,
+        "decendios": decs,
+        "labels": labels,
+        "today_pos": round(100 * (doy + 0.5) / 365, 2),
+        "state_txt": window.phrase,
+        "source": source_full,
+    }
+
+
+def _zarc_error_actions(roca: Roca | None, rain_location) -> None:
+    if roca is not None and not rain_location.ibge_code:
+        if st.button("Tentar identificar município novamente", key="retry_ibge_zarc"):
+            try:
+                place = resolve_place(roca.lat, roca.lon)
+            except GeocodeUnavailable as exc:
+                st.warning(f"Não foi possível identificar o município agora: {exc}")
+                return
+            aviso = None if place.ibge_code else "Município achado, mas sem código no IBGE: o ZARC não vai aparecer."
+            set_roca(
+                Roca(
+                    lat=roca.lat,
+                    lon=roca.lon,
+                    municipio=place.municipio,
+                    uf=place.uf,
+                    ibge_code=place.ibge_code,
+                    aviso_municipio=aviso,
+                )
+            )
+            st.session_state["_zarc_tentativa"] = st.session_state.get("_zarc_tentativa", 0) + 1
+            st.rerun()
+        return
+
+    st.warning("Não foi possível baixar ou ler os dados do ZARC agora. Os avisos continuam usando a chuva e o risco simulado.")
+    if st.button("Tentar baixar dados do ZARC novamente", key="retry_zarc"):
+        st.session_state["_zarc_tentativa"] = st.session_state.get("_zarc_tentativa", 0) + 1
+        st.rerun()
 
 
 def _delay_data(df_matrix, crop_id: str, delay: int) -> dict:
@@ -355,10 +453,19 @@ def plantio_page() -> None:
         st.caption(f"Simulando o dia **{as_of:%d/%m/%Y}** (mude no rodapé).")
 
     profile = soil_profile(rain_location)
+    soil_group = texture_class(profile.get("areia_pct"), profile.get("argila_pct"))
     suitability = evaluate(profile)
     loc_json = rain_location.model_dump_json()
+
+    zarc_cfg = load_yaml_config("zarc")
+    cycle_labels = {str(k): str(v) for k, v in zarc_cfg.get("ciclos", {}).items()}
+    keep("ciclo_zarc", "todos")
+    cycle_sel = stored("ciclo_zarc", "todos")
+    cycle_code = None if cycle_sel == "todos" else str(cycle_sel)
+
+    ensure_zarc_downloaded_with_progress()
     try:
-        report = _rain_delay_report(loc_json, as_of)
+        report = _rain_delay_report(loc_json, as_of, soil_group=soil_group, cycle_code=cycle_code)
         series = rain_series(loc_json, date.today())
     except RainDataUnavailable as exc:
         report, series = None, None
@@ -375,20 +482,47 @@ def plantio_page() -> None:
         "initial_n_kg_ha": round(available_nitrogen_kg_ha(profile), 1),
         "soil_factors": tuple(sorted((c.crop_id, round(c.yield_factor, 3)) for c in suitability)),
     }
-    df_matrix = _risk_matrix(location_id, delay, *veranico_args, tuple(soil_args.items()))
+
+    rain_override: RainOverride | None = None
+    if series is not None:
+        base_stats = _get_lakehouse_catalog().get_seasonal_climate_stats(location_id)
+        pt_stats = seasonal_stats_from_rain_series(
+            series,
+            base_stats,
+            veranico_prob=veranico_args[0],
+            veranico_lengths=veranico_args[1],
+        )
+        if pt_stats.location_id == series.location_id:
+            rain_override = (
+                pt_stats.location_id,
+                pt_stats.safra_rain_mean_mm,
+                pt_stats.safra_rain_std_mm,
+                pt_stats.safrinha_rain_mean_mm,
+                pt_stats.safrinha_rain_std_mm,
+            )
+
+    df_matrix = _risk_matrix(
+        location_id,
+        delay,
+        *veranico_args,
+        tuple(soil_args.items()),
+        rain_override=rain_override,
+    )
 
     # --- o que plantar: seletor + janela + aviso --------------------------------------
-    all_names = crop_names()
-    names = {c: all_names[c] for c in ordered_ids() if c in all_names}
-    windows = {cw.crop_id: cw for cw in (report.crop_windows if report is not None else [])}
-    zarc_crops = set(load_yaml_config("zarc")["culturas"])
-    texture_group = texture_class(profile.get("areia_pct"), profile.get("argila_pct"))
-    veranico_typical = veranico.typical_longest if veranico is not None and veranico.seasons_with_onset else None
-    try:
-        water = water_by_crop(loc_json, as_of, texture_group, profile.depth_m, tuple(names))
-    except (RainDataUnavailable, TemperatureUnavailable) as exc:
-        water = None
-        st.warning(f"Não foi possível calcular a água da roça: {exc}")
+    zarc_season_start = report.status.season_start if report is not None else season_start_for(as_of, 1)
+    zarc_as_of = report.status.data_until if report is not None else as_of
+    zarc_res = _zarc_status(
+        loc_json,
+        zarc_season_start,
+        zarc_as_of,
+        st.session_state.get("_zarc_tentativa", 0),
+        soil_group=soil_group,
+        cycle_code=cycle_code,
+    )
+    names = crop_names()
+    windows = {cw.crop_id: cw for cw in zarc_res.crop_windows}
+    zarc_crops = set(zarc_cfg["culturas"])
     verdicts = {}
     for crop_id in names:
         if is_irrigated(crop_id):
@@ -398,7 +532,7 @@ def plantio_page() -> None:
         row = df_matrix.filter((df_matrix["crop_id"] == crop_id) & (df_matrix["delay_days"] == delay))
         risk = float(row["failure_prob_pct"][0]) if row.height else 50.0
         window = windows.get(crop_id)
-        if crop_id in zarc_crops and window is None and report is not None and report.zarc_error is None:
+        if crop_id in zarc_crops and window is None and zarc_res.zarc_error is None:
             window = CropWindowStatus(crop_id, None, "sem_indicacao")
         verdicts[crop_id] = crop_verdict(crop_id, risk, report.status if report else None, window, delay)
     groups = group_names()
@@ -409,14 +543,41 @@ def plantio_page() -> None:
     store("cultura", chosen)
     verdict = verdicts[chosen]
 
+    texture_group = soil_group
+    veranico_typical = veranico.typical_longest if veranico is not None and veranico.seasons_with_onset else None
+    try:
+        water = water_by_crop(loc_json, as_of, texture_group, profile.depth_m, tuple(names))
+    except (RainDataUnavailable, TemperatureUnavailable) as exc:
+        water = None
+        st.warning(f"Não foi possível calcular a água da roça: {exc}")
+
+    place_name = f"{rain_location.name}/{rain_location.state}" if rain_location.state else rain_location.name
     st.html('<div style="height:.75rem"></div>')
     left, right = st.columns([1, 1.25], gap="large")
     with left:
-        ibge = rain_location.ibge_code
-        components.zarc_window(_zarc_data(chosen, windows.get(chosen), ibge, as_of, report), key="zarc_plantio")
+        components.zarc_window(_zarc_data(chosen, windows.get(chosen), as_of, zarc_res, place_name), key="zarc_plantio")
+        if chosen in zarc_crops and not zarc_res.zarc_error:
+            cycle_opts = ["todos"] + list(cycle_labels)
+            st.selectbox(
+                "Ciclo da cultivar no ZARC",
+                cycle_opts,
+                format_func=lambda c: "Todos os ciclos disponíveis" if c == "todos" else cycle_labels.get(c, c),
+                **watch("ciclo_zarc"),
+            )
+            cw = windows.get(chosen)
+            if cw and cw.window and cw.window.available_cycles:
+                avail_txt = ", ".join(cycle_labels.get(c, c) for c in cw.window.available_cycles)
+                st.caption(f"Ciclos com indicação ZARC neste solo: {avail_txt}.")
+        if zarc_res.zarc_error and chosen in zarc_crops:
+            _zarc_error_actions(roca, rain_location)
     with right:
         foot = None
-        if roca is not None and not is_irrigated(chosen):
+        if rain_override is not None:
+            foot = (
+                f"Chuva histórica (NASA POWER) e ZARC filtrados para solo {TEXTURE_LABELS[soil_group]} "
+                f"em {place_name}."
+            )
+        elif roca is not None:
             foot = (f"O risco usa o clima de exemplo de {nearest.name}/{nearest.state} (a {nearest_km:.0f} km da roça). "
                     "A chuva e o ZARC são do ponto da roça.")
         components.crop_hero({"icon": CROP_ICONS[chosen], "eyebrow": "O aviso do Acauã", "title": names[chosen],
@@ -451,7 +612,7 @@ def plantio_page() -> None:
         priority = st.segmented_control(
             "O que pesa mais", options=list(_PRIORITY), format_func=lambda p: _PRIORITY[p], **watch("prioridade"),
         ) or BalancePriority.EQUILIBRADO
-    (location, config, climate_stats, results, df_scoreboard, df_balance, df_pareto, df_nutrients,
+    (_sim_loc, config, climate_stats, results, df_scoreboard, df_balance, df_pareto, df_nutrients,
      df_climate_annual) = _run_cached_simulation(
         location_id=location_id,
         horizon_years=horizon_years,
@@ -459,9 +620,10 @@ def plantio_page() -> None:
         safra_delay_days=delay,
         veranico_prob=veranico_args[0],
         veranico_lengths=veranico_args[1],
-        initial_om_pct=soil_args["initial_om_pct"],
-        initial_n_kg_ha=soil_args["initial_n_kg_ha"],
-        soil_factors=soil_args["soil_factors"],
+        initial_om_pct=round(profile.get("mo_pct"), 2),
+        initial_n_kg_ha=round(available_nitrogen_kg_ha(profile), 1),
+        soil_factors=tuple(sorted((c.crop_id, round(c.yield_factor, 3)) for c in suitability)),
+        rain_override=rain_override,
     )
     ranked = rank_by_balance_priority(results, priority)
     risk_txt = ("quebra de safra" if horizon_years == 1 else "2 quebras de safra seguidas")
@@ -496,10 +658,21 @@ def plantio_page() -> None:
     st.header("Ficha técnica", anchor=False)
     milho = df_matrix.filter((df_matrix["crop_id"] == "milho_sertanejo") & (df_matrix["delay_days"] == delay))
     traffic_light = classify_traffic_light(float(milho["failure_prob_pct"][0]) if milho.height else 50.0)
-    pdf_bytes = generate_one_pager_pdf(location=location, config=config, traffic_light=traffic_light,
-                                       scoreboard=df_scoreboard, results=results)
+    rain_note = "Chuva calibrada pela serie NASA POWER do ponto." if rain_override is not None else None
+    pdf_bytes = generate_one_pager_pdf(
+        location=rain_location,
+        config=config,
+        traffic_light=traffic_light,
+        scoreboard=df_scoreboard,
+        results=results,
+        soil_profile=profile,
+        crop_windows=zarc_res.crop_windows,
+        zarc_safra=zarc_res.zarc_safra,
+        zarc_error=zarc_res.zarc_error,
+        rain_source_note=rain_note,
+    )
     st.download_button("Baixar a ficha técnica (PDF, 1 página)", data=pdf_bytes,
-                       file_name=f"ficha_acaua_{location.location_id}.pdf", mime="application/pdf", type="primary")
+                       file_name=f"ficha_acaua_{rain_location.location_id}.pdf", mime="application/pdf", type="primary")
     with st.expander("O que não sabemos: limites do modelo"):
         for idx, item in enumerate(WHAT_WE_DONT_KNOW_ITEMS, start=1):
             st.markdown(f"{idx}. {item}")

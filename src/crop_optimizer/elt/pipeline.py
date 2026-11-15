@@ -51,6 +51,7 @@ class CropLakehouseEltPipeline:
         soil_source: SoilRemoteSensingSource | None = None,
         zarc_source: ZarcDataSource | None = None,
         market_source: MarketDataSource | None = None,
+        include_zarc_download: bool = False,
     ) -> None:
         self.settings = settings or get_settings()
         self.climate_source = climate_source or NasaPowerClient(
@@ -64,7 +65,10 @@ class CropLakehouseEltPipeline:
             token=self.settings.nasa_appeears_token,
             seed=self.settings.random_seed + 59,
         )
-        self.zarc_source = zarc_source or EmbrapaZarcSource()
+        self.zarc_source = zarc_source or EmbrapaZarcSource(
+            settings=self.settings,
+            allow_download=include_zarc_download,
+        )
         self.market_source = market_source or B3MarketDataSource()
 
     def run(
